@@ -171,20 +171,7 @@ Price
   The curve is deterministic and transparent.
 ```
 
-**Initial token distribution at project creation:**
-| Allocation | Recipient | Rationale |
-|---|---|---|
-| 20% | Project creator | Reward for defining the problem |
-| 15% | Protocol treasury | Funds validator infrastructure |
-| 10% | Initial benchmark setter | Reward for v1 implementation |
-| 55% | Miner rewards pool | Released over time to successful commits |
-
 **Miner rewards:** Every accepted PR that improves the benchmark score releases tokens from the miner pool. The token release amount scales with the magnitude of the improvement — a 5% gain releases more tokens than a 0.1% gain. This creates a frontier effect: early improvements are large and richly rewarded; marginal improvements compete harder for smaller rewards.
-
-**Token utility:**
-- Governance: token holders vote on benchmark spec upgrades (versioned, not retroactive)
-- Staking: miners must stake tokens to submit PRs, creating skin-in-the-game
-- Revenue: a small fee on token trades funds ongoing validator operations
 
 ---
 
@@ -359,76 +346,6 @@ Miner stakes tokens → submits PR                                  │
      ◄────────────────────────────────────────────────────────────┘
      As miner pool empties, token scarcity increases
      → incentivizes early mining, rewards pioneers
-```
-
----
-
-## Honest Assessment
-
-This is a genuinely interesting idea. Here is an honest breakdown of where it is strong and where it faces real challenges.
-
-### What is strong
-
-**The benchmark-as-oracle insight is correct and powerful.** It sidesteps the hardest problem in decentralized science — evaluating the quality of research — by demanding that research be expressed as measurable code improvement. This is not a compromise; it is actually what distinguishes engineering from speculation.
-
-**The incentive structure is directionally right.** Miners bear cost (compute) to generate improvements, stake capital to submit, and earn only if their claim is independently verified. This is a real proof-of-useful-work system, unlike most crypto "compute" networks that burn energy on artificial problems.
-
-**The TEE validator design is practical.** Unlike zkML (which today adds hours of proving time for large models), hardware attestation can verify a GPU benchmark in seconds. This is deployable now, not in two years.
-
-**Composability with existing tools is a genuine moat.** Integrating as a Claude Code or Codex skill means the barrier to participation is near zero — researchers and miners use their existing tools. No new UI to learn.
-
-**Parallelism compounds.** This is the part that is hard to appreciate from a single experiment. Karpathy ran ~12 experiments per hour on one machine. Ten thousand nodes running in parallel run 120,000 experiments per hour. Across a weekend, that is millions of benchmark evaluations. Some research problems that take a lab a year could be compressed to days.
-
-### Where it faces real challenges
-
-**Benchmark gaming is the hardest problem.** Miners will eventually find ways to pass a benchmark without genuinely solving the underlying problem — overfitting to the benchmark suite, finding adversarial inputs that score well, or exploiting edge cases in the evaluation harness. This is Goodhart's Law applied to code. Mitigation requires: held-out test sets revealed only to TEE validators, rotating benchmarks, and human review for significant milestones. It is not unsolvable, but it requires ongoing attention.
-
-**Cold start for new projects.** A newly minted project has no miners and no token value. The researcher must either attract early miners through their reputation or front some token capital to signal commitment. This is similar to the cold start problem for any new market. A curated set of high-quality initial projects from known researchers would help enormously at launch.
-
-**Benchmark computation cost for validators.** If a project involves training a large model (even a 5-minute window like Karpathy's), validator nodes need significant compute. This either limits the protocol to fast-running benchmarks or requires validators with serious hardware — both are constraints. A two-tier system (fast validators for small benchmarks, expensive validators for large ones, with economics tuned accordingly) is likely necessary.
-
-**Legal and IP ambiguity.** If a miner's agent reads an existing open-source codebase, modifies it, and submits it, the licensing implications need clarity. The protocol should probably require all projects to declare an open-source license at creation, making all contributions irrevocably open.
-
-**TEE trust assumptions.** TEEs trust the hardware manufacturer (Intel, AMD, AWS). This is a meaningful trust assumption — it is not fully trustless. The zkML path addresses this but is not ready for production at meaningful benchmark complexity today.
-
-### The potential
-
-If the benchmark gaming problem is managed and the cold start is solved for a handful of flagship projects, the compounding effect of parallel agent research is real. The most valuable applications are likely:
-
-1. **ML efficiency** — where benchmarks are mature (perplexity, FLOPS, latency) and improvements have immediate commercial value
-2. **Bioinformatics** — protein folding energy scores, docking benchmarks, sequence alignment — where objective functions already exist and the research community is large
-3. **ZK proof systems** — proving time and verification cost are highly measurable, and improvements compound directly into blockchain scalability
-
-The vision of a global, incentivized research compute network is the right long-term direction. The question is not whether it is a good idea — it clearly is — but whether the execution can maintain benchmark integrity at scale while keeping the economic model balanced.
-
----
-
-## Roadmap
-
-```
-Phase 1 — Foundation (Months 1–3)
-  ├── Claude Code skill: create + mine flows
-  ├── SOP generator
-  ├── Local AutoResearch loop integration
-  ├── IPFS code hosting + on-chain registry (testnet)
-  └── Manual validator MVP (trusted team runs TEE nodes)
-
-Phase 2 — Token Launch (Months 4–6)
-  ├── Bonding curve token contracts (audited)
-  ├── 3–5 flagship research projects onboarded
-  ├── Decentralized validator network (permissioned TEE operators)
-  └── Miner leaderboard + project explorer UI
-
-Phase 3 — Open Mining (Months 7–12)
-  ├── Permissionless miner onboarding
-  ├── Validator staking + slashing (full economics live)
-  ├── Rotating held-out benchmark sets (anti-gaming)
-  └── Cross-chain token support
-
-Phase 4 — zkML Integration (Year 2)
-  ├── zkML verification path as alternative to TEE
-  ├── Hybrid consensus (TEE + zkML agreement)
-  └── Fully trustless validator network
 ```
 
 ---
