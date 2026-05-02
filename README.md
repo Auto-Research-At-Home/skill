@@ -24,6 +24,21 @@ AutoResearch At Home takes this idea and asks: *what if instead of one agent on 
 
 ---
 
+## Research Domains
+
+AutoResearch At Home is not specific to ML. Any domain where a benchmark can objectively score code quality is a valid target.
+
+**High-signal domains today:**
+- **ML efficiency** — attention mechanisms, quantization, training loops, kernel fusion
+- **Open source libraries** — numerical routines, parsing algorithms, compression codecs
+- **Bioinformatics** — protein folding energy functions, sequence alignment algorithms
+- **Blockchain** — consensus mechanism implementations, ZK proof generation speed
+- **Compilers** — optimization passes, register allocation, instruction scheduling
+
+**The unifying property:** there must be a deterministic, reproducible benchmark that can score a piece of code in bounded time on bounded hardware. If that exists, AutoResearch At Home can run on it.
+
+---
+
 ## How It Works — The Big Picture
 
 ```
@@ -299,21 +314,6 @@ zkML (zero-knowledge proofs for ML) remains the long-term ideal for fully trustl
 
 ---
 
-## Research Domains
-
-AutoResearch At Home is not specific to ML. Any domain where a benchmark can objectively score code quality is a valid target.
-
-**High-signal domains today:**
-- **ML efficiency** — attention mechanisms, quantization, training loops, kernel fusion
-- **Open source libraries** — numerical routines, parsing algorithms, compression codecs
-- **Bioinformatics** — protein folding energy functions, sequence alignment algorithms
-- **Blockchain** — consensus mechanism implementations, ZK proof generation speed
-- **Compilers** — optimization passes, register allocation, instruction scheduling
-
-**The unifying property:** there must be a deterministic, reproducible benchmark that can score a piece of code in bounded time on bounded hardware. If that exists, AutoResearch At Home can run on it.
-
----
-
 ## Token Flow — End to End
 
 ```
@@ -386,44 +386,9 @@ claude mcp add autoresearch-skill
 
 ## How ARAH Differs from Bittensor
 
-Bittensor is the most well-known decentralized AI network. On the surface — miners, validators, token rewards for compute — ARAH looks similar. It is not. The differences are structural.
+Bittensor miners serve inference requests — the output is consumed and gone. ARAH miners produce improved source code that becomes the permanent baseline every future miner must beat. The network compounds; Bittensor just runs.
 
-**What miners actually do**
-
-Bittensor miners *serve* — they respond to inference requests continuously. The output is consumed and gone. There is no permanent artifact. Bittensor is a compute marketplace.
-
-ARAH miners *research* — they produce improved source code that becomes the new canonical baseline for the project. Every accepted commit is a permanent, verifiable artifact. The network gets collectively smarter with each commit because every improvement raises the floor for the next iteration. ARAH is a research ratchet, not a compute market.
-
-**The scoring problem**
-
-This is the deepest difference. Bittensor validators score miners *subjectively* — a validator runs a miner's output through its own judgment, often another AI model. This means validators can be lazy, wrong, or collude with preferred miners. Emissions flow to miners that validators *like*, not miners that are objectively better. Validator cartels have captured entire Bittensor subnets.
-
-ARAH uses a *deterministic benchmark* — a piece of code that runs and returns a number. There is no opinion. A TEE re-runs the exact benchmark on the exact code and produces the same result, or it does not. You cannot argue with it, bribe it, or collude with it.
-
-**Token economics**
-
-Bittensor has one token (TAO) distributed across all subnets via emission voting. Mining a bioinformatics subnet and mining an LLM inference subnet both compete for the same TAO pool — and subnet success depends on network-level politics, not research output quality.
-
-ARAH has a bonding curve token *per project*. A protein folding project has its own token. Token value is coupled directly to that specific research outcome — better code drives demand for that token. A miner's upside is tied to the quality of the specific problem they are solving, not TAO holder preferences.
-
-**The research contract**
-
-Bittensor subnet creators control the scoring mechanism and can change it. Miners invest hardware and optimization work for a subnet, the creator tweaks scoring, and their advantage disappears. There is no binding contract protecting miners.
-
-ARAH's SOP and benchmark spec are hashed on-chain at project creation and immutable. The research problem cannot change. If the creator wants a different direction, they fork — the original project continues independently. Miners know exactly what they are competing against, permanently.
-
-| | Bittensor | ARAH |
-|---|---|---|
-| What miners produce | Inference responses (ephemeral) | Improved source code (permanent) |
-| Scoring | Subjective validator opinion | Deterministic benchmark |
-| Validator trust model | Stake-weighted human judgment | TEE hardware attestation |
-| Token model | Single TAO across all subnets | Bonding curve per project |
-| Research compound effect | No — miners just serve | Yes — each commit raises the floor |
-| Problem specification | Subnet creator can change anytime | Immutable on-chain SOP |
-| Miner skin in the game | Stake to join network | Stake per PR submission |
-| Output | Inference service | Open source code |
-
-The shortest version: Bittensor rewards *serving*. ARAH rewards *discovering*.
+Bittensor validators score miners subjectively, which is why validator cartels exist. ARAH uses a deterministic benchmark — a number a TEE computes, not an opinion anyone forms. There is nothing to collude around.
 
 ---
 
