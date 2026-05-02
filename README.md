@@ -45,18 +45,18 @@ AutoResearch At Home is not specific to ML. Any domain where a benchmark can obj
 ┌──────────────────────────────────────────────────────────────────────┐
 │                        RESEARCHER (Project Creator)                   │
 │                                                                        │
-│  1. Installs skill:  npx autoresearch init                            │
+│  1. Installs skills: npx skills add Auto-Research-At-Home/skill       │
 │  2. Provides a GitHub repository URL                                  │
-│  3. Agent reads + understands codebase, derives Statement of Purpose  │
+│  3. Agent reads + understands codebase, derives protocol.json         │
 │  4. Agent runs repo in sandbox → establishes baseline benchmark score │
-│  5. Researcher reviews SOP + baseline, approves or refines            │
+│  5. Researcher reviews protocol + baseline, approves or refines       │
 │  6. Bonding curve token is minted, project is published               │
 └────────────────────────┬─────────────────────────────────────────────┘
                          │ Published to IPFS + on-chain registry
                          ▼
 ┌──────────────────────────────────────────────────────────────────────┐
 │                        PROTOCOL REGISTRY                              │
-│  - Statement of Purpose (immutable)                                   │
+│  - Experiment protocol / Statement of Purpose (immutable)             │
 │  - Benchmark suite (versioned, on-chain hash)                         │
 │  - Current best code + score (mutable, updated on valid commits)      │
 │  - Token contract (bonding curve)                                     │
@@ -89,28 +89,27 @@ AutoResearch At Home is not specific to ML. Any domain where a benchmark can obj
 
 ## Detailed Architecture
 
-### Layer 1 — The CLI Interface
+### Layer 1 — Agent Skills Interface
 
 Users interact with the system through a skill installed into their existing AI coding agent:
 
 ```bash
-# Claude Code users
-claude mcp add autoresearch
+# Install all ARAH skills from this repository
+npx skills add Auto-Research-At-Home/skill
 
-# Codex CLI users  
-codex skill add autoresearch
-
-# Standalone
-npx autoresearch
+# Or install only the project creation skill
+npx skills add Auto-Research-At-Home/skill --skill autoresearch-create
 ```
 
-Once installed, the skill exposes two primary flows: **create** (for researchers starting a project) and **mine** (for contributors improving existing ones).
+The skills are portable Agent Skills: each capability is a directory with a `SKILL.md` file plus any supporting resources. The `skills` CLI installs them into supported hosts such as Claude Code, Cursor, and Codex.
 
-The skill handles all protocol interactions — project registration, token operations, PR submission, and stake management — invisibly beneath a natural-language interface. The user just describes what they want; the skill handles the rest.
+The first shipped skill is **`autoresearch-create`**, which helps researchers start a project from an existing GitHub repository and produce a versioned experiment-loop `protocol.json` plus optional `program.md`. Future sibling skills will cover mining, validation, status, and publishing flows.
+
+Skills handle the conversational, LLM-assisted workflow. Deterministic or long-running protocol actions — sandbox execution, wallet operations, validator services, and unattended mining — can later be backed by scripts or a CLI invoked by the skill when needed.
 
 ---
 
-### Layer 2 — Project Creation and the Statement of Purpose
+### Layer 2 — Project Creation and the Experiment Protocol
 
 A project starts with a real, existing GitHub repository — not a blank canvas or a description. The researcher provides a repo URL; the skill-assisted agent does the rest.
 
@@ -125,7 +124,7 @@ Researcher provides: "https://github.com/org/some-ml-library"
 │     - Understand structure, core algorithms, existing tests     │
 │     - Identify what the library does and what it optimizes for  │
 │                                                                  │
-│  ② Derive Statement of Purpose                                  │
+│  ② Derive experiment protocol / Statement of Purpose             │
 │     - What problem does this code solve?                        │
 │     - What are the natural axes of improvement?                 │
 │       (speed, memory, accuracy, throughput, correctness)        │
@@ -150,20 +149,20 @@ Researcher provides: "https://github.com/org/some-ml-library"
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
-              Researcher reviews SOP + baseline score
+              Researcher reviews protocol + baseline score
               Refines wording, adjusts metric weights, approves
                               │
                               ▼
-              SOP + baseline score hashed and recorded on-chain
+              protocol + baseline score hashed and recorded on-chain
               (immutable — benchmark spec and baseline cannot be
                changed without forking to a new project)
 ```
 
 **Why an existing repo, not a blank prompt?**
 
-Starting from a real codebase gives the SOP credibility — the benchmarks are grounded in code that actually runs, the baseline score is a real measurement not a guess, and miners know exactly what they are improving. It also means the project creator is putting something real on the table, not just an idea. The sandbox run is the moment of truth: if the repo does not run cleanly in isolation, the project creator must fix it before the project can be listed. This keeps the registry populated only with actionable research targets.
+Starting from a real codebase gives the protocol credibility — the benchmarks are grounded in code that actually runs, the baseline score is a real measurement not a guess, and miners know exactly what they are improving. It also means the project creator is putting something real on the table, not just an idea. The sandbox run is the moment of truth: if the repo does not run cleanly in isolation, the project creator must fix it before the project can be listed. This keeps the registry populated only with actionable research targets.
 
-The immutability of the SOP is critical. It prevents the project creator from moving the goalposts after miners have invested compute. The benchmark is the contract.
+The immutability of the protocol is critical. It prevents the project creator from moving the goalposts after miners have invested compute. The benchmark is the contract.
 
 ---
 
@@ -199,7 +198,7 @@ Code lives on IPFS for content-addressable storage, with on-chain pointers for p
 │                     ON-CHAIN REGISTRY                         │
 │                                                               │
 │  project_id → {                                               │
-│    sop_hash: "QmXyz...",          // IPFS CID of SOP         │
+│    protocol_hash: "QmXyz...",     // IPFS CID of protocol    │
 │    current_best: {                                            │
 │      code_cid: "QmAbc...",        // IPFS CID of code        │
 │      score: 0.847,                // benchmark metric         │
@@ -225,7 +224,7 @@ This is the engine. When a miner picks a project, the skill bootstraps a local A
 ┌──────────────────────────────────────────────────────────────────┐
 │                        MINER'S LOCAL LOOP                         │
 │                                                                    │
-│  ① Pull current best code + SOP + benchmark from registry         │
+│  ① Pull current best code + protocol + benchmark from registry    │
 │                                                                    │
 │  ② Start AutoResearch loop:                                        │
 │     ┌─────────────────────────────────────────────────────────┐  │
@@ -255,7 +254,7 @@ This is the engine. When a miner picks a project, the skill bootstraps a local A
 **Miner incentive design:** Miners choose projects where:
 - Token value × expected reward > cost of compute to find improvement
 - The current benchmark gap is large enough to make improvement tractable
-- The SOP aligns with their agent's strengths (e.g., a CUDA expert targets GPU kernels)
+- The protocol aligns with their agent's strengths (e.g., a CUDA expert targets GPU kernels)
 
 ---
 
@@ -302,8 +301,8 @@ zkML (zero-knowledge proofs for ML) remains the long-term ideal for fully trustl
 
 | Component | What it does | Technology |
 |---|---|---|
-| **CLI Skill** | User-facing entry point for create and mine flows | Claude Code / Codex plugin |
-| **SOP Generator** | Reads an existing GitHub repo, derives the research spec, generates a benchmark harness, and runs a baseline score in sandbox | Claude API (claude-opus-4-7) + Docker |
+| **Agent Skills** | User-facing entry points for create, baseline, mine, validate, and status flows | Agent Skills spec + skills.sh |
+| **Protocol Generator** | Reads an existing GitHub repo, derives the research spec, and proposes a benchmark contract | Host coding agent LLM + skill resources |
 | **Sandbox Runner** | Executes the repo + benchmark in an isolated container to produce a verified, deterministic baseline score | Docker / Firecracker |
 | **Token Contract** | Bonding curve token per project with miner rewards pool | Solidity / EVM |
 | **Protocol Registry** | On-chain index of projects, current best scores, and git history | Solidity + IPFS |
@@ -350,25 +349,32 @@ Miner stakes tokens → submits PR                                  │
 
 ---
 
-## Quick Start (Coming Soon)
+## Quick Start (Current Skill)
 
 ```bash
-# Install the skill into Claude Code
-claude mcp add autoresearch-skill
+# Install this repository's skills into supported agents
+npx skills add Auto-Research-At-Home/skill
+
+# Or install only the create skill
+npx skills add Auto-Research-At-Home/skill --skill autoresearch-create
 
 # Create a project from an existing GitHub repo
-> /autoresearch create https://github.com/your-org/your-repo
+> create an autoresearch project from https://github.com/your-org/your-repo
 
-# The agent will read the repo, generate a Statement of Purpose,
-# run a sandbox benchmark to establish a baseline score,
-# and ask you to review + approve before minting the token.
-
-# Mine an existing project
-> /autoresearch mine
-
-# Check your contributions
-> /autoresearch status
+# The agent will clone or scan the repo, build a discovery bundle,
+# ask the protocol questionnaire, and write protocol.json.
 ```
+
+The current repository ships only `autoresearch-create`. Mining, status, validation, and on-chain publishing skills are planned sibling skills:
+
+```text
+autoresearch-create/
+autoresearch-mine/       # future
+autoresearch-status/     # future
+autoresearch-validate/   # future
+```
+
+The create skill now includes its discovery prompts, schema, questionnaire, baseline runner, and `program.md` renderer under `autoresearch-create/`.
 
 ---
 
