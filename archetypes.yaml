@@ -1,0 +1,103 @@
+# Repo archetypes for experiment-loop protocol generation.
+# Defaults seed questionnaire branches and DiscoveryDraft priors; humans finalize.
+
+version: "1.0"
+
+assignment_rule: >
+  Resolve archetype in order: (1) CI primary workflow purpose,
+  (2) README "how to run" / Quickstart, (3) dominant scripts under scripts/ or *train*.py / main entrypoints,
+  (4) default unknown — questionnaire must resolve.
+
+non_fit:
+  description: >
+    Repositories that should not be forced into an experiment loop without redesign.
+  patterns:
+    - pure_documentation_only
+    - empty_scaffolding_no_runnable_target
+    - secret_dependent_runtime_without_stubs_or_vault
+    - subjective_manual_qa_only_success_criterion
+    - unbounded_external_cost_api_without_budget
+
+archetypes:
+  ml_train:
+    definition: "Supervised or self-supervised training with validation/test signal."
+    questionnaire_branch: questionnaire/by_archetype/ml_train.md
+    defaults:
+      stop_condition_type: wall_clock
+      metric_family: loss_bits_accuracy_perplexity
+      typical_mutable_globs:
+        - "train.py"
+        - "model.py"
+        - "src/**/*.py"
+        - "configs/**/*.yaml"
+      typical_immutable_hints:
+        - "prepare.py"
+        - "eval*.py"
+        - "tests/**"
+
+  rl_loop:
+    definition: "RL, bandits, or env interaction with rollouts and scalar return-style objectives."
+    questionnaire_branch: questionnaire/by_archetype/rl_loop.md
+    defaults:
+      stop_condition_type: wall_clock
+      metric_family: return_regret_winrate
+      typical_mutable_globs:
+        - "policy/**/*.py"
+        - "agent.py"
+      caution: "Reward shaping and env edits can invalidate benchmarks—pin harness."
+
+  benchmark_opt:
+    definition: "Optimize a deterministic scalar score on a fixed benchmark driver."
+    questionnaire_branch: questionnaire/by_archetype/benchmark_opt.md
+    defaults:
+      stop_condition_type: fixed_suite
+      metric_family: single_scalar_score
+      typical_mutable_globs:
+        - "src/**/*.py"
+        - "solver.py"
+
+  build_test:
+    definition: "Software correctness or regression via build + automated tests."
+    questionnaire_branch: questionnaire/by_archetype/build_test.md
+    defaults:
+      stop_condition_type: fixed_suite
+      metric_family: pass_fail_timing
+      typical_mutable_globs:
+        - "src/**/*.py"
+      typical_forbidden_hints:
+        - "tests/**"
+
+  solver_compete:
+    definition: "Contest-style submission against a hidden or public test harness."
+    questionnaire_branch: questionnaire/by_archetype/solver_compete.md
+    defaults:
+      stop_condition_type: wall_clock
+      metric_family: tests_passed_score
+      typical_mutable_globs:
+        - "solution.py"
+        - "main.cpp"
+
+  pipeline_job:
+    definition: "ETL or batch job with measurable throughput or error-rate outcomes."
+    questionnaire_branch: questionnaire/by_archetype/pipeline_job.md
+    defaults:
+      stop_condition_type: wall_clock
+      metric_family: throughput_error_quality
+      typical_mutable_globs:
+        - "transforms/**/*.py"
+        - "jobs/**/*.py"
+
+  inference_serving:
+    definition: "Serving, APIs, or inference stacks—often needs a synthetic harness for tight loops."
+    questionnaire_branch: questionnaire/by_archetype/inference_serving.md
+    defaults:
+      stop_condition_type: wall_clock
+      metric_family: latency_throughput_cost
+      eligible_note: "Usually needs_harness unless synthetic load generator and SLO metric exist."
+
+  unknown:
+    definition: "Insufficient signal—must be resolved via questionnaire before eligibility."
+    questionnaire_branch: questionnaire/universal.md
+    defaults:
+      stop_condition_type: wall_clock
+      metric_family: unspecified

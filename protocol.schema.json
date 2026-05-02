@@ -1,0 +1,569 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/autoresearch/experiment-protocol/protocol.schema.json",
+  "title": "ExperimentLoopProtocol",
+  "description": "Versioned experiment-loop contract: environment, mutable surface, execution, measurement, provenance. Use schemaKind \"protocol\" for finalized bundles; \"discoveryDraft\" for LLM discovery output prior to merge and validation.",
+  "oneOf": [
+    { "$ref": "#/$defs/ProtocolDocument" },
+    { "$ref": "#/$defs/DiscoveryDraftDocument" }
+  ],
+  "$defs": {
+    "ProtocolVersion": {
+      "type": "string",
+      "enum": ["1.0"]
+    },
+    "SchemaKind": {
+      "type": "string",
+      "enum": ["protocol", "discoveryDraft"]
+    },
+    "ArchetypeId": {
+      "type": "string",
+      "enum": [
+        "ml_train",
+        "rl_loop",
+        "benchmark_opt",
+        "build_test",
+        "solver_compete",
+        "pipeline_job",
+        "inference_serving",
+        "unknown"
+      ]
+    },
+    "Eligibility": {
+      "type": "string",
+      "enum": ["eligible", "needs_harness", "ineligible"]
+    },
+    "Confidence": {
+      "type": "string",
+      "enum": ["high", "medium", "low"]
+    },
+    "RepoRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "owner": { "type": "string" },
+        "name": { "type": "string" },
+        "defaultBranch": { "type": "string" },
+        "cloneUrl": { "type": "string", "format": "uri" }
+      }
+    },
+    "Meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["archetype", "eligibility", "purposeStatement"],
+      "properties": {
+        "archetype": { "$ref": "#/$defs/ArchetypeId" },
+        "eligibility": { "$ref": "#/$defs/Eligibility" },
+        "repo": { "$ref": "#/$defs/RepoRef" },
+        "purposeStatement": {
+          "type": "string",
+          "description": "One-sentence statement of what should improve across iterations."
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "protocolBundleId": {
+          "type": "string",
+          "description": "Immutable id for handoff between phase 1 (authoring) and phase 2 (experimenters)."
+        }
+      }
+    },
+    "EnvironmentConstraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "noNewDependencies": { "type": "boolean" },
+        "networkPolicy": {
+          "type": "string",
+          "enum": ["sandbox", "full", "offline", "unknown"]
+        }
+      }
+    },
+    "Environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["setupCommands", "constraints"],
+      "properties": {
+        "osHints": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "e.g. darwin-arm64, linux-x86_64"
+        },
+        "packageManagers": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "e.g. uv, pip, npm, cargo"
+        },
+        "setupCommands": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Ordered shell commands to prepare the environment (no secrets in schema)."
+        },
+        "assetPrep": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Data downloads, cache paths, checksum notes."
+        },
+        "constraints": { "$ref": "#/$defs/EnvironmentConstraints" }
+      }
+    },
+    "MutableSurface": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowedGlobs", "forbiddenGlobs", "allowedKinds"],
+      "properties": {
+        "allowedGlobs": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" },
+          "description": "Glob patterns agents may edit. Must not overlap forbiddenGlobs (validate out-of-band)."
+        },
+        "forbiddenGlobs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "allowedKinds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["code_edit", "config_edit"]
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "ImmutableHarness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["paths", "rationale"],
+      "properties": {
+        "paths": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Paths or globs defining eval/data harness; do not modify."
+        },
+        "rationale": { "type": "string" }
+      }
+    },
+    "StopCondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "wall_clock",
+            "max_steps",
+            "epochs",
+            "until_metric",
+            "fixed_suite"
+          ]
+        },
+        "trainingSecondsBudget": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Wall-clock training budget when type is wall_clock."
+        },
+        "excludeCompilationFromBudget": {
+          "type": "boolean",
+          "description": "If true, compile/startup may sit outside the counted budget."
+        },
+        "maxSteps": { "type": "integer", "minimum": 1 },
+        "epochs": { "type": "integer", "minimum": 1 },
+        "notes": { "type": "string" }
+      }
+    },
+    "Execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "cwd", "stopCondition", "hardTimeoutSeconds"],
+      "properties": {
+        "command": {
+          "type": "string",
+          "description": "Primary experiment command (single shell-invokable line)."
+        },
+        "cwd": { "type": "string", "default": "." },
+        "stopCondition": { "$ref": "#/$defs/StopCondition" },
+        "hardTimeoutSeconds": {
+          "type": "number",
+          "minimum": 1,
+          "description": "Kill switch for hung runs."
+        },
+        "determinism": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "seedPolicy": {
+              "type": "string",
+              "enum": ["optional", "required"]
+            },
+            "notes": { "type": "string" }
+          }
+        }
+      }
+    },
+    "MetricExtract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["regex", "json_pointer", "junit", "pytest_summary", "custom"]
+        },
+        "pattern": {
+          "type": "string",
+          "description": "Regex with first capture group = metric value when kind is regex."
+        },
+        "jsonPointer": { "type": "string" },
+        "exampleStdout": {
+          "type": "string",
+          "description": "Golden snippet for parser tests."
+        },
+        "notes": { "type": "string" }
+      }
+    },
+    "PrimaryMetric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "direction", "extract"],
+      "properties": {
+        "name": { "type": "string" },
+        "direction": {
+          "type": "string",
+          "enum": ["minimize", "maximize"]
+        },
+        "extract": { "$ref": "#/$defs/MetricExtract" }
+      }
+    },
+    "SecondaryMetric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "direction"],
+      "properties": {
+        "name": { "type": "string" },
+        "direction": {
+          "type": "string",
+          "enum": ["minimize", "maximize"]
+        },
+        "extract": { "$ref": "#/$defs/MetricExtract" }
+      }
+    },
+    "Measurement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["primaryMetric", "baselinePolicy"],
+      "properties": {
+        "primaryMetric": { "$ref": "#/$defs/PrimaryMetric" },
+        "secondaryMetrics": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/SecondaryMetric" }
+        },
+        "baselinePolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["establishOnHardware", "sameDataSnapshot"],
+          "properties": {
+            "establishOnHardware": { "type": "boolean" },
+            "sameDataSnapshot": { "type": "boolean" },
+            "baselineNotes": { "type": "string" }
+          }
+        }
+      }
+    },
+    "ResultsLog": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "path", "columns"],
+      "properties": {
+        "format": {
+          "type": "string",
+          "enum": ["tsv", "csv", "jsonl"]
+        },
+        "path": { "type": "string" },
+        "columns": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        }
+      }
+    },
+    "GitWorkflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "branchPattern": { "type": "string" },
+        "commitScope": { "type": "string" },
+        "pathPrefix": {
+          "type": "string",
+          "description": "Monorepo: only stage paths under this prefix."
+        },
+        "stagingExample": { "type": "string" }
+      }
+    },
+    "Provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resultsLog"],
+      "properties": {
+        "resultsLog": { "$ref": "#/$defs/ResultsLog" },
+        "gitWorkflow": { "$ref": "#/$defs/GitWorkflow" },
+        "baselineArtifactPath": {
+          "type": "string",
+          "description": "Optional path to stored baseline log for phase-2 handoff."
+        }
+      }
+    },
+    "Safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "oomPolicy": {
+          "type": "string",
+          "enum": ["reduce_batch", "fail", "unknown"]
+        },
+        "crashStatus": {
+          "type": "string",
+          "enum": ["crash", "discard", "retry"]
+        }
+      }
+    },
+    "AgentRules": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "simplicityCriterion": { "type": "boolean" },
+        "autonomy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "noAskHumanToContinue": { "type": "boolean" }
+          }
+        },
+        "experimentTimeoutNotes": { "type": "string" },
+        "logRedirectExample": { "type": "string" }
+      }
+    },
+    "ArchetypeExtensions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ml_train": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "dataSnapshot": { "type": "string" },
+            "evalTokens": { "type": "integer" },
+            "hardwareNotes": { "type": "string" }
+          }
+        },
+        "build_test": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "testCommand": { "type": "string" },
+            "testSubset": { "type": "string" },
+            "flakePolicy": { "type": "string" }
+          }
+        },
+        "rl_loop": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "envId": { "type": "string" },
+            "episodeHorizon": { "type": "integer" },
+            "numSeeds": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    },
+    "ProtocolDocument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaKind",
+        "protocolVersion",
+        "meta",
+        "environment",
+        "mutableSurface",
+        "immutableHarness",
+        "execution",
+        "measurement",
+        "provenance",
+        "safety",
+        "agentRules"
+      ],
+      "properties": {
+        "schemaKind": { "const": "protocol" },
+        "protocolVersion": { "$ref": "#/$defs/ProtocolVersion" },
+        "meta": { "$ref": "#/$defs/Meta" },
+        "environment": { "$ref": "#/$defs/Environment" },
+        "mutableSurface": { "$ref": "#/$defs/MutableSurface" },
+        "immutableHarness": { "$ref": "#/$defs/ImmutableHarness" },
+        "execution": { "$ref": "#/$defs/Execution" },
+        "measurement": { "$ref": "#/$defs/Measurement" },
+        "provenance": { "$ref": "#/$defs/Provenance" },
+        "safety": { "$ref": "#/$defs/Safety" },
+        "agentRules": { "$ref": "#/$defs/AgentRules" },
+        "archetypeExtensions": { "$ref": "#/$defs/ArchetypeExtensions" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "meta": {
+                "properties": { "eligibility": { "const": "eligible" } },
+                "required": ["eligibility"]
+              }
+            },
+            "required": ["meta"]
+          },
+          "then": {
+            "properties": {
+              "measurement": {
+                "properties": {
+                  "primaryMetric": {
+                    "required": ["name", "direction", "extract"],
+                    "properties": {
+                      "extract": {
+                        "required": ["kind"],
+                        "properties": {
+                          "pattern": { "type": "string", "minLength": 1 }
+                        },
+                        "allOf": [
+                          {
+                            "if": {
+                              "properties": { "kind": { "const": "regex" } },
+                              "required": ["kind"]
+                            },
+                            "then": { "required": ["pattern"] }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "DiscoveryDraftDocument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaKind",
+        "protocolVersion",
+        "meta",
+        "environment",
+        "execution",
+        "measurement",
+        "mutableSurface",
+        "blockers"
+      ],
+      "properties": {
+        "schemaKind": { "const": "discoveryDraft" },
+        "protocolVersion": { "$ref": "#/$defs/ProtocolVersion" },
+        "meta": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["archetypeGuess"],
+          "properties": {
+            "archetypeGuess": { "$ref": "#/$defs/ArchetypeId" },
+            "archetypeConfidence": { "$ref": "#/$defs/Confidence" },
+            "purposeStatementGuess": { "type": "string" },
+            "repo": { "$ref": "#/$defs/RepoRef" }
+          }
+        },
+        "environment": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "setupCommandsGuess": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "setupCommandsConfidence": { "$ref": "#/$defs/Confidence" },
+            "osHintsGuess": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "packageManagersGuess": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "execution": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "commandGuess": { "type": "string" },
+            "commandConfidence": { "$ref": "#/$defs/Confidence" },
+            "cwdGuess": { "type": "string" },
+            "stopConditionGuess": { "$ref": "#/$defs/StopCondition" },
+            "stopConditionConfidence": { "$ref": "#/$defs/Confidence" }
+          }
+        },
+        "measurement": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "metricGuess": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "name": { "type": "string" },
+                "direction": {
+                  "type": "string",
+                  "enum": ["minimize", "maximize"]
+                },
+                "extractGuess": { "$ref": "#/$defs/MetricExtract" },
+                "extractConfidence": { "$ref": "#/$defs/Confidence" }
+              }
+            }
+          }
+        },
+        "mutableSurface": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "allowedGlobsGuess": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "allowedGlobsConfidence": { "$ref": "#/$defs/Confidence" },
+            "forbiddenGlobsGuess": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "immutableHarnessPathsGuess": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "blockers": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Ambiguities, missing README steps, multiple train entrypoints, secret deps."
+        },
+        "candidates": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "commands": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "trainScripts": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,215 @@
+# Experiment protocol
+
+{{ meta.purposeStatement }}
+
+{% if meta.protocolBundleId %}
+**Protocol bundle id:** `{{ meta.protocolBundleId }}`
+{% endif %}
+
+{% if provenance.gitWorkflow and provenance.gitWorkflow.pathPrefix %}
+**Monorepo note:** Stage only paths under `{{ provenance.gitWorkflow.pathPrefix }}`. Avoid blind `git add -A`.
+{% endif %}
+
+## Meta
+
+| Field | Value |
+|-------|-------|
+| Archetype | `{{ meta.archetype }}` |
+| Eligibility | `{{ meta.eligibility }}` |
+{% if meta.repo and meta.repo.owner %}
+| Repository | `{{ meta.repo.owner }}/{{ meta.repo.name }}` |
+{% endif %}
+
+---
+
+## Setup
+
+To prepare the environment:
+
+{% for cmd in environment.setupCommands %}
+{{ loop.index }}. `{{ cmd }}`
+{% endfor %}
+
+{% if environment.assetPrep %}
+### Asset preparation
+
+{% for line in environment.assetPrep %}
+- {{ line }}
+{% endfor %}
+{% endif %}
+
+{% if environment.constraints %}
+### Constraints
+
+- **No new dependencies:** {{ environment.constraints.noNewDependencies | default('unspecified') }}
+- **Network policy:** {{ environment.constraints.networkPolicy | default('unspecified') }}
+{% endif %}
+
+### Read before editing
+
+- Read `README.md` for repository context.
+{% if immutableHarness.paths %}
+- **Do not modify** harness / ground-truth paths: {% for p in immutableHarness.paths %}`{{ p }}`{% if not loop.last %}, {% endif %}{% endfor %} — {{ immutableHarness.rationale }}
+{% endif %}
+
+---
+
+## Experimentation
+
+Run each experiment with:
+
+```bash
+{{ execution.command }}
+```
+
+Working directory: `{{ execution.cwd | default('.') }}`
+
+### Stop condition
+
+- **Type:** `{{ execution.stopCondition.type }}`
+{% if execution.stopCondition.trainingSecondsBudget is defined %}
+- **Training / primary budget (seconds):** {{ execution.stopCondition.trainingSecondsBudget }}
+{% endif %}
+{% if execution.stopCondition.excludeCompilationFromBudget %}
+- **Exclude compilation from budget:** yes
+{% endif %}
+- **Hard timeout (seconds):** {{ execution.hardTimeoutSeconds }}
+
+{% if execution.determinism %}
+### Determinism
+
+- **Seed policy:** {{ execution.determinism.seedPolicy | default('optional') }}
+{% if execution.determinism.notes %}
+- **Notes:** {{ execution.determinism.notes }}
+{% endif %}
+{% endif %}
+
+### What you CAN do
+
+{% for g in mutableSurface.allowedGlobs %}
+- Edit files matching `{{ g }}` ({{ mutableSurface.allowedKinds | join(', ') }})
+{% endfor %}
+
+### What you CANNOT do
+
+{% for g in mutableSurface.forbiddenGlobs %}
+- Modify paths matching `{{ g }}`
+{% endfor %}
+{% if environment.constraints and environment.constraints.noNewDependencies %}
+- Add new dependencies beyond the locked environment.
+{% endif %}
+
+### Goal
+
+Optimize **{{ measurement.primaryMetric.name }}** — **{{ measurement.primaryMetric.direction }}**.
+
+{% if agentRules and agentRules.simplicityCriterion %}
+**Simplicity criterion:** Prefer simpler solutions when improvements are comparable.
+{% endif %}
+
+{% if measurement.baselinePolicy %}
+### Baseline policy
+
+- Establish baseline on this hardware: {{ measurement.baselinePolicy.establishOnHardware }}
+- Same data snapshot for comparisons: {{ measurement.baselinePolicy.sameDataSnapshot }}
+{% if measurement.baselinePolicy.baselineNotes %}
+- **Notes:** {{ measurement.baselinePolicy.baselineNotes }}
+{% endif %}
+{% endif %}
+
+---
+
+## Output format
+
+After a successful run, extract the primary metric using:
+
+{% if measurement.primaryMetric.extract.kind == 'regex' %}
+- **Pattern:** `{{ measurement.primaryMetric.extract.pattern }}`
+
+Example stdout fragment:
+
+```
+{{ measurement.primaryMetric.extract.exampleStdout | default('(provide golden log excerpt)') }}
+```
+{% else %}
+- **Extractor kind:** `{{ measurement.primaryMetric.extract.kind }}`
+{% endif %}
+
+---
+
+## Logging results
+
+Log each trial to **`{{ provenance.resultsLog.path }}`** ({{ provenance.resultsLog.format | upper }}).
+
+Columns:
+
+{% for col in provenance.resultsLog.columns %}
+{{ loop.index }}. `{{ col }}`
+{% endfor %}
+
+{% if provenance.gitWorkflow and provenance.gitWorkflow.branchPattern %}
+Use branch pattern: `{{ provenance.gitWorkflow.branchPattern }}`
+{% endif %}
+{% if provenance.gitWorkflow and provenance.gitWorkflow.stagingExample %}
+Example staging: `{{ provenance.gitWorkflow.stagingExample }}`
+{% endif %}
+
+---
+
+## Safety
+
+{% if safety %}
+- **OOM policy:** {{ safety.oomPolicy | default('unspecified') }}
+- **Crash handling:** {{ safety.crashStatus | default('unspecified') }}
+{% endif %}
+
+{% if agentRules and agentRules.experimentTimeoutNotes %}
+### Timeout notes
+
+{{ agentRules.experimentTimeoutNotes }}
+{% endif %}
+
+{% if agentRules and agentRules.logRedirectExample %}
+### Log capture
+
+```bash
+{{ agentRules.logRedirectExample }}
+```
+{% endif %}
+
+---
+
+## Archetype extensions
+
+{% if archetypeExtensions %}
+{% for section, body in archetypeExtensions.items() %}
+### {{ section }}
+
+{% if body is mapping %}
+{% for sk, sv in body.items() %}
+- **{{ sk }}:** {{ sv }}
+{% endfor %}
+{% else %}
+{{ body }}
+{% endif %}
+
+{% endfor %}
+{% else %}
+_None._
+{% endif %}
+
+---
+
+## The experiment loop (template)
+
+1. Note current git branch and commit.
+2. Apply a **single** experimental change within allowed globs.
+3. Commit with message `experiment: <short description>`.
+4. Run `{{ execution.command }}` (respect timeout).
+5. Parse **{{ measurement.primaryMetric.name }}** from output using the agreed extractor.
+6. Append a row to `{{ provenance.resultsLog.path }}`.
+7. If the metric improved per direction **{{ measurement.primaryMetric.direction }}**, keep the commit; otherwise revert per team policy.
+
+---
+
+*Rendered from `templates/program.md.j2` (experiment-protocol package) using protocol version {{ protocolVersion }}.*
