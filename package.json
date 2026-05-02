@@ -1,0 +1,21 @@
+{
+  "name": "autoresearch-skills",
+  "version": "0.0.1",
+  "description": "Auto Research At Home (ARAH) — agent skills for bootstrapping decentralized research projects from existing GitHub repositories.",
+  "license": "MIT",
+  "keywords": [
+    "agent-skills",
+    "skills.sh",
+    "claude-code",
+    "cursor",
+    "codex",
+    "autoresearch",
+    "arah",
+    "desci"
+  ],
+  "homepage": "https://github.com/Auto-Research-At-Home/skill",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Auto-Research-At-Home/skill.git"
+  }
+}
