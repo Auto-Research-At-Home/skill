@@ -17,6 +17,17 @@ python3 -m venv .venv
 
 Defaults resolve **`contracts/0g-galileo-testnet/deployment.json`** inside this skill. Override with **`ARAH_DEPLOYMENT_JSON`** / **`ARAH_RPC_URL`** / **`ARAH_PROJECT_REGISTRY`** / **`ARAH_PROPOSAL_LEDGER`** when pointing at a different deployment.
 
+For bootstrap directly from a project token address or project id with 0G artifact downloads:
+
+```bash
+cd autoresearch-mine
+npm install
+python3 scripts/bootstrap_from_registry.py \
+  --token-address 0xProjectTokenAddress \
+  --output-dir /tmp/arah-mine/project \
+  --download-artifacts
+```
+
 ## Canonical upstream (parity only)
 
 Maintainers sync ABI/deployment from **`autoresearch-create/contracts/0g-galileo-testnet/`**. Full narrative remains **`autoresearch-create/references/onchain-0g-galileo.md`**.

@@ -26,6 +26,22 @@ This file distills the **miner submit path** from [`autoresearch-create/referenc
 
 - **`ProjectRegistry.getProject(projectId)`** — project metadata including **`protocolHash`**, **`token`**, etc.
 - **`ProjectRegistry.currentBestAggregateScore(projectId)`** — network best as **`int256`** (compare using the same metric scale as create).
+- **`ProjectRegistry.tokenOf(projectId)`** — project token address. To mine from only a token address, `scripts/bootstrap_from_registry.py` scans `tokenOf(0..nextProjectId-1)` to recover the project id, then reads the project hashes.
+
+## Bootstrap from token address
+
+When publish used `--upload-artifacts-to-0g`, the project hash fields are 0G Storage roots. Miners can bootstrap directly:
+
+```bash
+python3 scripts/bootstrap_from_registry.py \
+  --token-address 0xProjectTokenAddress \
+  --output-dir /tmp/arah-mine/my-project \
+  --download-artifacts
+```
+
+This downloads `protocol.json`, `repo-snapshot.tar`, `benchmark.tar`, and `baseline-metrics.log`, verifies each 0G Merkle root, unpacks the repo snapshot, initializes `.autoresearch/mine`, and writes registry frontier state.
+
+If the project was published with plain SHA-256 file hashes, the registry proves integrity but does not provide retrievable storage roots. In that case, supply the local protocol and repo checkout to `bootstrap_from_registry.py` without `--download-artifacts`.
 
 ## Out of scope here
 
