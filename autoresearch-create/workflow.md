@@ -117,7 +117,7 @@ flowchart LR
 | Render narrative | `python scripts/render_program_md.py path/to/protocol.json` (requires `pip install jinja2`) | Human-readable **`program.md`** (not automatic when JSON changes) |
 | Eligibility | `eligibility_rubric.md` | Decide `eligible` / `needs_harness` / `ineligible` |
 | Baseline | Run `execution.command` from protocol on pinned setup | Prove runnable; record first metric row |
-| Publish prompt | `scripts/publish_project_0g.mjs` + `contracts/0g-galileo-testnet/deployment.json` + `references/onchain-0g-galileo.md` | Ask to call `ProjectRegistry.createProject(...)` after a successful measured baseline |
+| Publish prompt | `scripts/publish_project_0g.mjs` + `contracts/0g-galileo-testnet/deployment.json` + `references/onchain-0g-galileo.md` | Upload artifacts to 0G Storage, then ask to call `ProjectRegistry.createProject(...)` after a successful measured baseline |
 
 ---
 
@@ -147,7 +147,8 @@ flowchart LR
 | **`bundle_meta.json`** | From the bundle script only: clone path, SHA, paths to schema — audit trail |
 | **`discovery_draft.json`** (retained) | Raw LLM output for debugging / reproducibility |
 | **Baseline record** | Row in `provenance.resultsLog` (e.g. `results.tsv`) + stored log artifact path |
-| **On-chain publish record** | Project id, project token address, transaction hash, chain id, and registry addresses when the user approves publishing |
+| **Storage publish record** | `storage_0g_galileo.json`: artifact paths, SHA-256 digests, 0G Storage root hashes, tx hashes, and indexer RPC |
+| **On-chain publish record** | Project id, project token address, transaction hash, chain id, registry addresses, and storage artifact roots when the user approves publishing |
 | **`needs_harness` follow-ups** | If rubric says so: issues or scripts to add before **`eligible`** |
 
 Phase 2 **only** needs the **protocol bundle** ( **`protocol.json`** + baseline policy + optional **`program.md`** ); it does **not** need to re-run discovery unless the repo or contract changes.

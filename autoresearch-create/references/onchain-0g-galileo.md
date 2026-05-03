@@ -40,18 +40,42 @@ ProjectRegistry.createProject(
 
 Before submitting a transaction, confirm or derive:
 
-- `protocolHash`: bytes32 digest of the immutable protocol bundle or its canonical off-chain artifact.
-- `repoSnapshotHash`: bytes32 digest of the repository snapshot miners must start from.
-- `benchmarkHash`: bytes32 digest of the immutable benchmark/harness bundle.
+- `protocolHash`: bytes32 digest of the immutable protocol bundle or its canonical off-chain artifact. When using 0G Storage, use the uploaded artifact's 0G Storage root hash.
+- `repoSnapshotHash`: bytes32 digest of the repository snapshot miners must start from. When using 0G Storage, use the uploaded artifact's 0G Storage root hash.
+- `benchmarkHash`: bytes32 digest of the immutable benchmark/harness bundle. When using 0G Storage, use the uploaded artifact's 0G Storage root hash.
 - `baselineAggregateScore`: signed integer representation of the approved baseline metric. If the metric is decimal, choose and record a deterministic scale before publishing.
-- `baselineMetricsHash`: bytes32 digest of the baseline metrics artifact/log.
+- `baselineMetricsHash`: bytes32 digest of the baseline metrics artifact/log. When using 0G Storage, use the uploaded artifact's 0G Storage root hash.
 - `tokenName`, `tokenSymbol`, `basePrice`, `slope`, `minerPoolCap`: tokenomics parameters. Ask the user if not already specified.
 
 The `ProjectCreated(projectId, creator, token, protocolHash)` event gives the canonical `projectId` and per-project `ProjectToken` address. Store those values with the protocol authoring artifacts.
 
-Do not pass raw IPFS CIDs or URLs into `bytes32` fields. Store CIDs/URLs off-chain and pass the agreed bytes32 digest that the contract expects.
+Do not pass raw IPFS CIDs or URLs into `bytes32` fields. For 0G Storage, the root hash is already a `bytes32` Merkle root and can be used directly. Store the download metadata off-chain in `storage_0g_galileo.json`.
 
 Use `scripts/publish_project_0g.mjs` for publishing. It opens a temporary localhost browser page, discovers injected EIP-1193 wallets, asks the user to sign a SIWE-style publish approval message, verifies that signature locally, sends `eth_sendTransaction` through the browser wallet after user approval, polls the 0G RPC for the receipt, and writes `publish_0g_galileo.json`.
+
+## 0G Storage artifact publication
+
+The publish CLI can upload the protocol, repo snapshot, benchmark bundle, and baseline metrics artifact to 0G Storage before calling `ProjectRegistry.createProject(...)`:
+
+```bash
+node scripts/publish_project_0g.mjs \
+  --protocol-json ./out/protocol.json \
+  --repo-snapshot-file ./repo-snapshot.tar \
+  --benchmark-file ./benchmark.tar \
+  --baseline-metrics-file ./out/baseline_run.log \
+  --baseline-aggregate-score 12345 \
+  --token-name "Research Token" \
+  --token-symbol RCH \
+  --base-price 1000000000000000 \
+  --slope 1000000000000 \
+  --miner-pool-cap 1000000000000000000000000 \
+  --upload-artifacts-to-0g \
+  --yes
+```
+
+0G Storage does not use a web2 API key in this flow. Uploads are paid/signed by an EVM wallet on the 0G network. By default, the CLI opens a localhost browser page and routes 0G Storage SDK transaction requests to an injected wallet extension. Set `ZG_STORAGE_PRIVATE_KEY` only for a local throwaway/publisher wallet with 0G testnet gas. Do not use a backend-held project key.
+
+With `--dry-run --upload-artifacts-to-0g`, the CLI computes the 0G Merkle roots and writes a preview manifest, but does not submit storage transactions. With a real upload, it writes `storage_0g_galileo.json` containing each artifact path, size, SHA-256 digest, 0G root hash, tx hash, and storage indexer RPC.
 
 ## ABI-derived mining and review flow
 

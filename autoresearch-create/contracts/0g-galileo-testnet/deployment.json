@@ -4,6 +4,10 @@
     "chainId": 16602,
     "rpcUrl": "https://evmrpc-testnet.0g.ai"
   },
+  "storage": {
+    "mode": "turbo",
+    "indexerRpc": "https://indexer-storage-testnet-turbo.0g.ai"
+  },
   "contracts": {
     "VerifierRegistry": {
       "address": "0x257974E406f206BfAEd3abB8D93C232e3226f032",
