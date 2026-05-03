@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/autoresearch/experiment-protocol/sidechat_message.schema.json",
+  "title": "MiningSidechatMessage",
+  "description": "Optional AXL side conversation message appended to .autoresearch/mine/sidechat.jsonl",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion",
+    "type"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1" },
+    "type": { "type": "string" },
+    "projectId": { "type": ["string", "null"] },
+    "protocolBundleId": { "type": ["string", "null"] },
+    "trialId": { "type": ["string", "null"] },
+    "minerId": { "type": ["string", "null"] },
+    "fromPeerId": { "type": ["string", "null"] },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "receivedAt": { "type": "string", "format": "date-time" },
+    "hypothesis": { "type": "string" },
+    "metricName": { "type": ["string", "null"] },
+    "metricValue": { "type": ["number", "null"] },
+    "direction": { "type": ["string", "null"], "enum": ["minimize", "maximize", null] },
+    "beatsLocalBest": { "type": ["boolean", "null"] },
+    "beatsNetworkBest": { "type": ["boolean", "null"] },
+    "runOk": { "type": ["boolean", "null"] },
+    "summary": { "type": "string" },
+    "ask": { "type": "string" },
+    "stdoutLogPath": { "type": ["string", "null"] },
+    "gitHeadAfter": { "type": ["string", "null"] },
+    "bodyBase64": { "type": "string" }
+  }
+}

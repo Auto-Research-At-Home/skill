@@ -68,10 +68,13 @@ npm install
 .autoresearch/mine/
   network_state.json
   trials.jsonl
+  sidechat.jsonl
   runs/<trial_id>/stdout.log
 ```
 
 Initialize with **`init_mine_workspace.sh`**. Seed **`network_state.json`** from `templates/network_state.manual.json` **or** refresh from chain with **`sync_registry_frontier.py`** (writes `source: registry`). Align with `validate_network_state.sh` after editing or syncing.
+
+Optional **AXL sidechat** writes miner-to-miner field notes to **`sidechat.jsonl`**. This is advisory context only; the benchmark log, `trials.jsonl`, on-chain registry, and verifier reruns remain authoritative.
 
 ## Bundled resources
 
@@ -95,6 +98,8 @@ Initialize with **`init_mine_workspace.sh`**. Seed **`network_state.json`** from
 | `scripts/run_trial.sh` | One harness run → `run_baseline.sh`, log under `runs/<trial_id>/stdout.log`. |
 | `scripts/submit_trial_proposal.py` | Archive committed trial code, pair it with the trial benchmark log, and send the on-chain proposal transaction automatically. |
 | `scripts/append_trial_record.py` | Append one validated JSON line to `trials.jsonl`. |
+| `scripts/axl_sidechat_send.py` | Optional AXL `/send` bridge: broadcast the latest trial row as a miner experience message. |
+| `scripts/axl_sidechat_poll.py` | Optional AXL `/recv` bridge: drain inbound sidechat into `.autoresearch/mine/sidechat.jsonl`. |
 | `scripts/compare_metric.py` | Numeric compare by direction (exit code only). |
 | `scripts/preview_mining_context.sh` | Wrapper for bundled `preview_metrics.py`. |
 | `scripts/list_mutable_paths.py` | List tracked paths matching allowed globs. |
@@ -107,6 +112,7 @@ Initialize with **`init_mine_workspace.sh`**. Seed **`network_state.json`** from
 | `scripts/chain_config.py` | Resolve bundled deployment + env overrides (imported by chain scripts). |
 | `scripts/open_pr_with_evidence.sh` | `gh pr create` after guard checks (`_open_pr_evidence.py`). |
 | `schemas/trial_record.schema.json` | Trial row shape. |
+| `schemas/sidechat_message.schema.json` | Optional AXL side conversation row shape. |
 | `schemas/network_state.schema.json` | `network_state.json` shape (manual or registry). |
 | `requirements-chain.txt` | `web3`, `eth-account` for chain scripts only. |
 | `prompts/*.md` | Agent contracts for bootstrap, loop, logging, git, PR. |
@@ -230,6 +236,32 @@ Use **`--print-only`** to dump resolved args without RPC; **`--dry-run`** to pri
 # or --allow-local-only-pr when network_best_metric is null (see prompts/pr_gate.md)
 ```
 
+### 8. Optional AXL sidechat
+
+Run an AXL node locally and point the miner at its raw HTTP API:
+
+```bash
+export ARAH_AXL_ENABLED=1
+export ARAH_AXL_API=http://127.0.0.1:9002
+export ARAH_AXL_PEERS=peer_public_key_hex_1,peer_public_key_hex_2
+```
+
+Before a batch or between trials, drain inbound messages:
+
+```bash
+./axl_sidechat_poll.py --repo-root /path/to/repo
+```
+
+After appending a trial row, broadcast the latest miner experience:
+
+```bash
+./axl_sidechat_send.py \
+  --record-file /path/to/repo/.autoresearch/mine/trials.jsonl \
+  --peers "$ARAH_AXL_PEERS"
+```
+
+Use sidechat only for side conversation: experiment hints, failed-hypothesis memory, minor reviewer/proposer coordination, and warnings about flaky runs. Do not use sidechat as current-best state, proposal evidence, or validator evidence.
+
 ## Script exit codes
 
 | Script | Codes |
@@ -245,6 +277,8 @@ Use **`--print-only`** to dump resolved args without RPC; **`--dry-run`** to pri
 | `run_trial.sh` | Same as `run_baseline.sh`; **3** if harness dir missing. |
 | `submit_trial_proposal.py` | 0 submitted; 1 args / dirty repo / missing trial log / submit failure. |
 | `append_trial_record.py` | 0; 1 validation; 2 IO. |
+| `axl_sidechat_send.py` | 0 sent / disabled / no peers; 1 invalid input or every configured peer failed. |
+| `axl_sidechat_poll.py` | 0 drained queue; 1 bad args / AXL receive failure / write failure. |
 | `compare_metric.py` | 0 improved; 1 not improved; 2 bad args/NaN. |
 | `preview_mining_context.sh` | 0; 1. |
 | `revert_mutable_surface.sh` | 0; 1. |
