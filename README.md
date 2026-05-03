@@ -221,30 +221,30 @@ The emitted `ProjectCreated` event returns the canonical `projectId` and project
 
 ---
 
-### Layer 4 — Code Hosting (IPFS + On-Chain Attestation)
+### Layer 4 — Code Hosting (0G Storage + On-Chain Attestation)
 
-Code lives on IPFS for content-addressable storage, with on-chain pointers for permanence and discoverability.
+Project artifacts live on 0G Storage for content-addressable storage, with on-chain root hashes for permanence and discoverability.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │                     ON-CHAIN REGISTRY                         │
 │                                                               │
 │  project_id → {                                               │
-│    protocol_hash: "QmXyz...",     // IPFS CID of protocol    │
+│    protocol_hash: "0xabc...",     // 0G root of protocol     │
 │    current_best: {                                            │
-│      code_cid: "QmAbc...",        // IPFS CID of code        │
+│      code_root: "0xdef...",       // 0G root of code         │
 │      score: 0.847,                // benchmark metric         │
 │      block: 19284756,             // when it was verified     │
 │      miner: "0xDe3..."            // who submitted it         │
 │    },                                                         │
-│    benchmark_cid: "QmBnc...",     // IPFS CID of bench suite │
+│    benchmark_root: "0x123...",    // 0G root of bench suite  │
 │    token: "0xTok...",             // bonding curve contract   │
-│    git_log: [...],                // ordered list of CIDs    │
+│    git_log: [...],                // ordered list of roots   │
 │  }                                                            │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-Git history is preserved as an ordered chain of IPFS CIDs, each pointing to a diff, making the full research history verifiable and permanent. Nothing is deleted — even rejected attempts are logged as metadata (though not as the canonical code state) to prevent duplicate work.
+The current create skill uploads the protocol, repo snapshot, benchmark bundle, and baseline metrics artifact to 0G Storage and stores the resulting root hashes on-chain. It also writes `storage_0g_galileo.json` so miners can retrieve and verify the exact files.
 
 ---
 

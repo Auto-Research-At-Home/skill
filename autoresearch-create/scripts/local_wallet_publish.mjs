@@ -65,9 +65,10 @@ export async function verifySiweSignature({ message, address, signature }) {
 }
 
 export async function startLocalWalletPublish({
-  txRequest,
+  txRequest = null,
   deployment,
-  summary,
+  summary = null,
+  storageArtifacts = null,
   timeoutMs = DEFAULT_TIMEOUT_MS,
   open = true,
   logger = console,
@@ -79,6 +80,18 @@ export async function startLocalWalletPublish({
   const expirationTime = new Date(Date.now() + timeoutMs).toISOString();
   const messagesByAddress = new Map();
   const approvedSignatures = new Map();
+  const pendingWalletRequests = new Map();
+  let nextWalletRequestId = 1;
+  let connectedAddress = null;
+  let resolveAccount;
+  const accountReady = new Promise((resolve) => {
+    resolveAccount = resolve;
+  });
+  const state = {
+    txRequest,
+    summary,
+    storageArtifacts,
+  };
 
   let settled = false;
   let resolveResult;
@@ -112,22 +125,72 @@ export async function startLocalWalletPublish({
       if (req.method === "GET" && route === "/session") {
         sendJson(res, 200, {
           chain: chainConfig(deployment),
-          summary: normalizeJson(summary),
-          txRequest: normalizeJson(txRequest),
+          summary: normalizeJson(state.summary),
+          txRequest: normalizeJson(state.txRequest),
+          storageArtifacts: normalizeJson(state.storageArtifacts),
+          connectedAddress,
         });
+        return;
+      }
+      if (req.method === "POST" && route === "/account") {
+        const body = await readJsonBody(req);
+        const address = normalizeAddress(body.address);
+        connectedAddress = address;
+        resolveAccount(address);
+        sendJson(res, 200, { ok: true });
+        return;
+      }
+      if (req.method === "GET" && route === "/wallet-request") {
+        const next = Array.from(pendingWalletRequests.values()).find(
+          (item) => item.status === "pending",
+        );
+        if (!next) {
+          sendJson(res, 200, { request: null });
+          return;
+        }
+        next.status = "sent";
+        sendJson(res, 200, {
+          request: {
+            id: next.id,
+            label: next.label,
+            method: next.method,
+            params: normalizeJson(next.params),
+          },
+        });
+        return;
+      }
+      if (req.method === "POST" && route === "/wallet-result") {
+        const body = await readJsonBody(req);
+        const id = Number(body.id);
+        const pending = pendingWalletRequests.get(id);
+        if (!pending) {
+          sendJson(res, 404, { error: "unknown wallet request" });
+          return;
+        }
+        pendingWalletRequests.delete(id);
+        if (body.error) {
+          pending.reject(new Error(String(body.error)));
+        } else {
+          pending.resolve(body.result);
+        }
+        sendJson(res, 200, { ok: true });
         return;
       }
       if (req.method === "POST" && route === "/message") {
         const body = await readJsonBody(req);
         const address = normalizeAddress(body.address);
+        if (!state.txRequest || !state.summary) {
+          sendJson(res, 409, { error: "publish transaction is not ready yet" });
+          return;
+        }
         const message = buildApprovalMessage({
           address,
           deployment,
           nonce,
           issuedAt,
           expirationTime,
-          txRequest,
-          summary,
+          txRequest: state.txRequest,
+          summary: state.summary,
           origin: localOrigin(server),
           token,
         });
@@ -199,6 +262,37 @@ export async function startLocalWalletPublish({
   return {
     url,
     result,
+    setPublishRequest({ txRequest: nextTxRequest, summary: nextSummary }) {
+      state.txRequest = nextTxRequest;
+      state.summary = nextSummary;
+    },
+    setStorageArtifacts(nextStorageArtifacts) {
+      state.storageArtifacts = nextStorageArtifacts;
+    },
+    waitForAccount() {
+      return connectedAddress ? Promise.resolve(connectedAddress) : accountReady;
+    },
+    eip1193Provider: {
+      request: async ({ method, params = [] }) => {
+        if (method === "eth_chainId") {
+          return `0x${BigInt(deployment.network.chainId).toString(16)}`;
+        }
+        if (method === "net_version") {
+          return String(deployment.network.chainId);
+        }
+        if (method === "eth_accounts" || method === "eth_requestAccounts") {
+          const address = await (connectedAddress
+            ? Promise.resolve(connectedAddress)
+            : accountReady);
+          return [address];
+        }
+        if (isWalletHandledMethod(method)) {
+          await (connectedAddress ? Promise.resolve(connectedAddress) : accountReady);
+          return requestBrowserWallet({ method, params });
+        }
+        return rpcRequest(deployment.network.rpcUrl, method, params);
+      },
+    },
     close() {
       clearTimeout(timeout);
       server.close();
@@ -212,6 +306,64 @@ export async function startLocalWalletPublish({
     settled = true;
     fn();
   }
+
+  function requestBrowserWallet({ method, params, label }) {
+    const id = nextWalletRequestId++;
+    const request = {
+      id,
+      method,
+      params,
+      label: label || walletMethodLabel(method),
+      status: "pending",
+    };
+    const promise = new Promise((resolve, reject) => {
+      request.resolve = resolve;
+      request.reject = reject;
+    });
+    pendingWalletRequests.set(id, request);
+    return promise;
+  }
+}
+
+function isWalletHandledMethod(method) {
+  return (
+    method === "eth_sendTransaction" ||
+    method === "personal_sign" ||
+    method === "eth_sign" ||
+    method === "eth_signTypedData" ||
+    method === "eth_signTypedData_v4"
+  );
+}
+
+function walletMethodLabel(method) {
+  if (method === "eth_sendTransaction") {
+    return "Confirm transaction";
+  }
+  if (method === "personal_sign" || method === "eth_sign") {
+    return "Sign message";
+  }
+  return method;
+}
+
+async function rpcRequest(rpcUrl, method, params) {
+  const response = await fetch(rpcUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: Date.now(),
+      method,
+      params,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`RPC ${method} failed with HTTP ${response.status}`);
+  }
+  const payload = await response.json();
+  if (payload.error) {
+    throw new Error(`RPC ${method} failed: ${payload.error.message}`);
+  }
+  return payload.result;
 }
 
 export function buildApprovalMessage({
@@ -294,7 +446,7 @@ function renderSignPage() {
 <main>
   <section>
     <h1>Publish to 0G Galileo</h1>
-    <p>Choose an installed browser wallet. You will first sign an approval message, then your wallet will ask you to confirm the on-chain transaction.</p>
+    <p>Choose an installed browser wallet. Keep this page open while the CLI prepares storage artifacts, asks for 0G Storage transaction approvals, then asks for the final project registry approval.</p>
     <div id="wallets"></div>
     <p id="status" class="status"></p>
     <pre id="summary"></pre>
@@ -306,6 +458,10 @@ const walletsEl = document.getElementById("wallets");
 const summaryEl = document.getElementById("summary");
 const providers = [];
 let session;
+let connectedProvider;
+let connectedAddress;
+let publishStarted = false;
+let walletPollStarted = false;
 
 function setStatus(text, isError = false) {
   statusEl.textContent = text;
@@ -330,7 +486,7 @@ function renderProviders() {
   for (const item of providers) {
     const button = document.createElement("button");
     button.textContent = item.info?.name || "Browser wallet";
-    button.onclick = () => publishWith(item.provider);
+    button.onclick = () => connectWith(item.provider);
     walletsEl.appendChild(button);
   }
 }
@@ -374,7 +530,7 @@ async function postJson(route, body) {
   return data;
 }
 
-async function publishWith(provider) {
+async function connectWith(provider) {
   try {
     for (const button of walletsEl.querySelectorAll("button")) button.disabled = true;
     setStatus("Requesting wallet account...");
@@ -385,21 +541,94 @@ async function publishWith(provider) {
     setStatus("Checking network...");
     await ensureChain(provider);
 
-    setStatus("Preparing approval message...");
-    const { message } = await postJson("message", { address });
-
-    setStatus("Waiting for message signature...");
-    const signature = await signMessage(provider, address, message);
-    await postJson("approve", { address, signature, message });
-
-    setStatus("Waiting for transaction approval...");
-    const txHash = await request(provider, "eth_sendTransaction", [{ ...session.txRequest, from: address }]);
-    await postJson("tx", { address, signature, message, txHash });
-    setStatus("Transaction submitted. You can return to the CLI.");
+    connectedProvider = provider;
+    connectedAddress = address;
+    await postJson("account", { address });
+    setStatus("Wallet connected. Waiting for CLI steps...");
+    startWalletRequestPolling();
+    startPublishPolling();
   } catch (err) {
     setStatus(err.message || String(err), true);
     for (const button of walletsEl.querySelectorAll("button")) button.disabled = false;
   }
+}
+
+function startWalletRequestPolling() {
+  if (walletPollStarted) return;
+  walletPollStarted = true;
+  pollWalletRequests();
+}
+
+async function pollWalletRequests() {
+  while (connectedProvider) {
+    try {
+      const res = await fetch("wallet-request");
+      const data = await res.json();
+      if (data.request) {
+        const item = data.request;
+        setStatus(item.label || "Waiting for wallet approval...");
+        try {
+          const result = await request(connectedProvider, item.method, item.params || []);
+          await postJson("wallet-result", { id: item.id, result });
+          setStatus("Wallet approval submitted. Waiting for next step...");
+        } catch (err) {
+          await postJson("wallet-result", { id: item.id, error: err.message || String(err) });
+          throw err;
+        }
+      } else {
+        await sleep(800);
+      }
+    } catch (err) {
+      setStatus(err.message || String(err), true);
+      await sleep(1200);
+    }
+  }
+}
+
+function startPublishPolling() {
+  pollPublishReadiness();
+}
+
+async function pollPublishReadiness() {
+  while (connectedProvider && !publishStarted) {
+    try {
+      session = await (await fetch("session")).json();
+      summaryEl.textContent = JSON.stringify({
+        summary: session.summary,
+        storageArtifacts: session.storageArtifacts,
+      }, null, 2);
+      if (session.txRequest) {
+        publishStarted = true;
+        await publishFinalProject();
+        return;
+      }
+    } catch (err) {
+      setStatus(err.message || String(err), true);
+    }
+    await sleep(1200);
+  }
+}
+
+async function publishFinalProject() {
+  try {
+    setStatus("Preparing approval message...");
+    const { message } = await postJson("message", { address: connectedAddress });
+
+    setStatus("Waiting for message signature...");
+    const signature = await signMessage(connectedProvider, connectedAddress, message);
+    await postJson("approve", { address: connectedAddress, signature, message });
+
+    setStatus("Waiting for final project transaction approval...");
+    const txHash = await request(connectedProvider, "eth_sendTransaction", [{ ...session.txRequest, from: connectedAddress }]);
+    await postJson("tx", { address: connectedAddress, signature, message, txHash });
+    setStatus("Transaction submitted. You can return to the CLI.");
+  } catch (err) {
+    setStatus(err.message || String(err), true);
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 window.addEventListener("eip6963:announceProvider", (event) => {
@@ -409,7 +638,10 @@ window.dispatchEvent(new Event("eip6963:requestProvider"));
 
 (async function init() {
   session = await (await fetch("session")).json();
-  summaryEl.textContent = JSON.stringify(session.summary, null, 2);
+  summaryEl.textContent = JSON.stringify({
+    summary: session.summary,
+    storageArtifacts: session.storageArtifacts,
+  }, null, 2);
   renderProviders();
   setTimeout(() => {
     if (window.ethereum) addProvider(window.ethereum, { name: window.ethereum.isMetaMask ? "MetaMask" : "Injected wallet" });

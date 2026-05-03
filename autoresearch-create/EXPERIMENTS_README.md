@@ -82,10 +82,13 @@ node scripts/publish_project_0g.mjs \
   --base-price 1000000000000000 \
   --slope 1000000000000 \
   --miner-pool-cap 1000000000000000000000000 \
+  --upload-artifacts-to-0g \
   --dry-run
 ```
 
-To publish, replace `--dry-run` with `--yes`. The CLI opens a temporary localhost browser page; choose an installed wallet extension, sign the publish approval message, approve the transaction in the wallet, and let the CLI poll the 0G RPC for the receipt. Use `--no-open` when you want the CLI to print the local URL without opening a browser.
+With `--upload-artifacts-to-0g`, dry-run mode computes 0G Storage Merkle roots and writes `storage_0g_galileo.json` without submitting storage transactions. To publish for real, replace `--dry-run` with `--yes`. The CLI opens a temporary localhost browser page; choose an installed wallet extension, approve the 0G Storage transaction(s), sign the publish approval message, approve the final registry transaction, and let the CLI poll the 0G RPC for the receipt. Use `--no-open` when you want the CLI to print the local URL without opening a browser.
+
+0G Storage upload is wallet-based, not API-key based. For unattended local use you may set `ZG_STORAGE_PRIVATE_KEY` to a publisher wallet with 0G testnet gas; otherwise the CLI uses the localhost browser-wallet flow.
 
 ## License
 
