@@ -20,6 +20,7 @@ Run **unattended** mining against a finalized `protocol.json` and a **git checko
 - Export **`GIT_TERMINAL_PROMPT=0`** during mining so git never blocks on credentials in headless runs.
 - Do **not** ask the miner between trials; stop only on limits, PR success (optional), or fatal errors.
 - Optional env shortcuts: **`AUTORESEARCH_PROTOCOL`**, **`AUTORESEARCH_REPO_ROOT`** (document paths once at start).
+- If the user provides a **project token address** or **0G project id** instead of local files, run **`bootstrap_from_registry.py`** first to resolve/download mining inputs.
 
 ### Env fallbacks (outer loop only; protocol `miningLoop` wins when set)
 
@@ -45,6 +46,14 @@ Run **unattended** mining against a finalized `protocol.json` and a **git checko
 | `ARAH_PROJECT_ID` | On-chain **project id** for frontier sync; overrides **`miningLoop.onChainProjectId`** in `protocol.json` when set. |
 
 Install Python chain deps once: **`pip install -r requirements-chain.txt`** (e.g. in a venv).
+
+For full artifact download from 0G Storage, install Node deps once from the skill root:
+
+```bash
+npm install
+```
+
+`bootstrap_from_registry.py` can still resolve project metadata and initialize an existing protocol/repo checkout without Node deps; Node deps are only required for **`--download-artifacts`**.
 
 ### Stop conditions (protocol-first)
 
@@ -77,6 +86,8 @@ Initialize with **`init_mine_workspace.sh`**. Seed **`network_state.json`** from
 | `scripts/read_mining_limits.py` | Print `max_trials`, `max_session_wall_seconds`, `max_stagnant_trials`, `stop_after_pr`, and optionally **`on_chain_project_id`** (if `miningLoop.onChainProjectId` or **`ARAH_PROJECT_ID`** is set). |
 | `scripts/init_mine_workspace.sh` | Create `.autoresearch/mine` tree. |
 | `scripts/bootstrap_repo.sh` | Clone or reuse repo from protocol `meta.repo`. |
+| `scripts/bootstrap_from_registry.py` | Resolve by **`--project-id`** or **`--token-address`**, read `ProjectRegistry`, optionally download 0G artifacts, unpack the repo snapshot, initialize mining workspace, and write registry frontier state. |
+| `scripts/download_0g_artifacts.mjs` | Download protocol/repo/benchmark/baseline artifacts from 0G Storage root hashes and verify Merkle roots with the 0G SDK. |
 | `scripts/run_trial.sh` | One harness run → `run_baseline.sh`, log under `runs/<trial_id>/stdout.log`. |
 | `scripts/append_trial_record.py` | Append one validated JSON line to `trials.jsonl`. |
 | `scripts/compare_metric.py` | Numeric compare by direction (exit code only). |
@@ -100,6 +111,30 @@ Initialize with **`init_mine_workspace.sh`**. Seed **`network_state.json`** from
 Run scripts from **`autoresearch-mine/scripts/`** (or invoke via absolute paths after skill install).
 
 ### 1. Bootstrap workspace
+
+**From project token address or project id** (preferred when the project was published with 0G Storage artifacts):
+
+```bash
+python3 ./bootstrap_from_registry.py \
+  --token-address 0xProjectTokenAddress \
+  --output-dir /path/to/mining-work/project-token \
+  --download-artifacts
+# or: --project-id 123
+```
+
+This writes `bootstrap_result.json`, initializes `.autoresearch/mine`, and prints the resolved `protocolJson` and `repoRoot`. Continue the loop with those paths.
+
+If the project was published with plain SHA-256 hashes instead of 0G Storage roots, `--download-artifacts` cannot fetch files; ask the user for `protocol.json` and a repo checkout, then use the same script without `--download-artifacts`:
+
+```bash
+python3 ./bootstrap_from_registry.py \
+  --token-address 0xProjectTokenAddress \
+  --protocol-json /path/to/protocol.json \
+  --repo-root /path/to/repo \
+  --output-dir /path/to/mining-work/project-token
+```
+
+**From existing local files:**
 
 ```bash
 export GIT_TERMINAL_PROMPT=0
@@ -182,6 +217,8 @@ Use **`--print-only`** to dump resolved args without RPC; **`--dry-run`** to pri
 | `read_mining_limits.py` | 0; 1 error. |
 | `init_mine_workspace.sh` | 0; 1 usage; 2 IO/template failure. |
 | `bootstrap_repo.sh` | 0; 1 bad protocol; 2 git / path conflict. |
+| `bootstrap_from_registry.py` | 0 bootstrapped; 1 args / RPC / token not found / download / unpack failure. |
+| `download_0g_artifacts.mjs` | 0 downloaded; 1 args / missing deps / download / root verification failure. |
 | `run_trial.sh` | Same as `run_baseline.sh`; **3** if harness dir missing. |
 | `append_trial_record.py` | 0; 1 validation; 2 IO. |
 | `compare_metric.py` | 0 improved; 1 not improved; 2 bad args/NaN. |
