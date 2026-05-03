@@ -50,7 +50,7 @@ AutoResearch At Home is not specific to ML. Any domain where a benchmark can obj
 │  3. Agent reads + understands codebase, derives protocol.json         │
 │  4. Agent runs repo in sandbox → establishes baseline benchmark score │
 │  5. Researcher reviews protocol + baseline, approves or refines       │
-│  6. Bonding curve token is minted, project is published               │
+│  6. ProjectRegistry creates a project token and publishes the project │
 └────────────────────────┬─────────────────────────────────────────────┘
                          │ Published to IPFS + on-chain registry
                          ▼
@@ -70,14 +70,14 @@ AutoResearch At Home is not specific to ML. Any domain where a benchmark can obj
 │  2. AutoResearch loop runs locally (Karpathy-style):                 │
 │     agent → edit code → run benchmark → beat current best? → commit  │
 │  3. Stakes compute capital as bond                                     │
-│  4. Submits PR with benchmark proof                                   │
+│  4. Submits proposal with stake, code hash, and benchmark proof       │
 └────────────────────────┬─────────────────────────────────────────────┘
-                         │ PR submitted with stake
+                         │ Proposal submitted with stake
                          ▼
 ┌──────────────────────────────────────────────────────────────────────┐
 │                        VALIDATOR NETWORK (TEE Nodes)                  │
 │                                                                        │
-│  1. Reads submitted PR + benchmark claim                              │
+│  1. Reads submitted proposal + benchmark claim                        │
 │  2. Re-runs benchmark inside Trusted Execution Environment            │
 │  3. Cryptographically attests: result matches or does not match       │
 │  4. If valid → miner earns project tokens + stake returned            │
@@ -103,7 +103,7 @@ npx skills add Auto-Research-At-Home/skill --skill autoresearch-create
 
 The skills are portable Agent Skills: each capability is a directory with a `SKILL.md` file plus any supporting resources. The `skills` CLI installs them into supported hosts such as Claude Code, Cursor, and Codex.
 
-The first shipped skill is **`autoresearch-create`**, which helps researchers start a project from an existing GitHub repository and produce a versioned experiment-loop `protocol.json` plus optional `program.md`. Future sibling skills will cover mining, validation, status, and publishing flows.
+The first shipped skill is **`autoresearch-create`**, which helps researchers start a project from an existing GitHub repository, produce a versioned experiment-loop `protocol.json` plus `program.md`, run a baseline, then ask whether to publish the eligible project on-chain. Future sibling skills will cover mining, validation, and status flows.
 
 Skills handle the conversational, LLM-assisted workflow. Deterministic or long-running protocol actions — sandbox execution, wallet operations, validator services, and unattended mining — can later be backed by scripts or a CLI invoked by the skill when needed.
 
@@ -168,7 +168,7 @@ The immutability of the protocol is critical. It prevents the project creator fr
 
 ### Layer 3 — The Token Engine
 
-Each project mints its own token via a **bonding curve contract** deployed on-chain at project creation.
+Each project mints its own token via `ProjectRegistry.createProject(...)`, which deploys one **ProjectToken** bonding-curve contract for that project.
 
 ```
 Price
@@ -185,7 +185,39 @@ Price
   The curve is deterministic and transparent.
 ```
 
-**Miner rewards:** Every accepted PR that improves the benchmark score releases tokens from the miner pool. The token release amount scales with the magnitude of the improvement — a 5% gain releases more tokens than a 0.1% gain. This creates a frontier effect: early improvements are large and richly rewarded; marginal improvements compete harder for smaller rewards.
+**Miner rewards:** Every accepted proposal that improves the benchmark score returns the miner's stake and mints the reward to the proposal's `rewardRecipient`. Rejected or expired proposals slash the miner's stake across the verifier-pool and burn paths.
+
+### Current 0G Galileo Testnet Deployment
+
+The create skill bundles the deployed ABI artifacts and manifest under `autoresearch-create/contracts/0g-galileo-testnet/`.
+
+| Field | Value |
+|---|---|
+| Chain | 0G Galileo testnet |
+| Chain ID | `16602` |
+| RPC | `https://evmrpc-testnet.0g.ai` |
+| `ProjectRegistry` | `0xc84768e450534974C0DD5BAb7c1b695744124136` |
+| `ProposalLedger` | `0x701db5f8Ed847651209A438695dfe5520adD6A5A` |
+| `VerifierRegistry` | `0x257974E406f206BfAEd3abB8D93C232e3226f032` |
+
+Publishing an approved project calls:
+
+```text
+ProjectRegistry.createProject(
+  protocolHash,
+  repoSnapshotHash,
+  benchmarkHash,
+  baselineAggregateScore,
+  baselineMetricsHash,
+  tokenName,
+  tokenSymbol,
+  basePrice,
+  slope,
+  minerPoolCap
+)
+```
+
+The emitted `ProjectCreated` event returns the canonical `projectId` and project token address. Miners then buy that project token, approve `ProposalLedger`, and submit proposals with a separate `rewardRecipient`.
 
 ---
 
@@ -268,7 +300,7 @@ Miners are untrusted. They could fabricate benchmark results. The validator netw
 │                                                                       │
 │  Hardware: Intel TDX / AMD SEV / AWS Nitro Enclaves                 │
 │                                                                       │
-│  On PR submission:                                                    │
+│  On proposal submission:                                              │
 │  ┌───────────────────────────────────────────────────────────────┐  │
 │  │  [Inside secure enclave — no external code can tamper]        │  │
 │  │                                                                │  │
@@ -280,9 +312,9 @@ Miners are untrusted. They could fabricate benchmark results. The validator netw
 │  │  6. Publish signed attestation on-chain                       │  │
 │  └───────────────────────────────────────────────────────────────┘  │
 │                                                                       │
-│  Smart contract collects N of M validator attestations               │
-│  If majority agree: PR accepted, miner rewarded, state updated       │
-│  If majority disagree: stake slashed, miner flagged                  │
+│  ProposalLedger gates review to VerifierRegistry allowlisted nodes   │
+│  If approved: stake returned, reward minted, best score updated      │
+│  If rejected/expired: stake slashed across verifier pool and burn    │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -293,7 +325,7 @@ Miners are untrusted. They could fabricate benchmark results. The validator netw
 
 zkML (zero-knowledge proofs for ML) remains the long-term ideal for fully trustless verification, as it does not require trusting hardware manufacturers. The protocol is designed so zkML validators can be added as an alternative verification path once the tooling matures.
 
-**Validator economics:** Validators stake protocol tokens to join the network. They earn fees from each verification. Validators who consistently disagree with consensus are penalized — this prevents lazy validators from free-riding.
+**Validator economics:** Verifiers must be allowlisted in `VerifierRegistry`. They claim reviews through `ProposalLedger.claimReview(...)`, then approve or reject after rerunning the benchmark.
 
 ---
 
@@ -305,9 +337,9 @@ zkML (zero-knowledge proofs for ML) remains the long-term ideal for fully trustl
 | **Protocol Generator** | Reads an existing GitHub repo, derives the research spec, and proposes a benchmark contract | Host coding agent LLM + skill resources |
 | **Sandbox Runner** | Executes the repo + benchmark in an isolated container to produce a verified, deterministic baseline score | Docker / Firecracker |
 | **Token Contract** | Bonding curve token per project with miner rewards pool | Solidity / EVM |
-| **Protocol Registry** | On-chain index of projects, current best scores, and git history | Solidity + IPFS |
+| **Protocol Registry** | On-chain index of projects, current best scores, and project token addresses | Solidity + IPFS |
 | **AutoResearch Loop** | Local agent loop that iterates on code and keeps only improvements | Python + AI coding agent |
-| **PR Submission** | Packages improved code, benchmark claim, and stake into a transaction | CLI + smart contract |
+| **Proposal Submission** | Packages improved code, benchmark claim, stake, and reward recipient into a transaction | CLI + smart contract |
 | **TEE Validators** | Re-run benchmarks in secure hardware and attest results on-chain | Intel TDX / AMD SEV |
 | **zkML Path** (future) | Cryptographic proof of benchmark execution without trusted hardware | EZKL / zkLLM |
 
@@ -328,7 +360,7 @@ Speculators / interested parties buy tokens                      │
 (price rises → project gains visibility and capital)             │
      │                                                            │
      ▼                                                            │
-Miner stakes tokens → submits PR                                  │
+Miner stakes tokens → submits proposal                            │
      │                                                            │
      ├── Validators attest TRUE                                   │
      │        │                                                   │
@@ -339,7 +371,7 @@ Miner stakes tokens → submits PR                                  │
      └── Validators attest FALSE                                  │
               │                                                   │
               ▼                                                   │
-         Stake slashed → redistributed to validators             │
+         Stake slashed → 50/50 verifier pool and burn paths      │
          Token price unaffected (no new supply released)         │
                                                                   │
      ◄────────────────────────────────────────────────────────────┘
@@ -362,10 +394,11 @@ npx skills add Auto-Research-At-Home/skill --skill autoresearch-create
 > create an autoresearch project from https://github.com/your-org/your-repo
 
 # The agent will clone or scan the repo, build a discovery bundle,
-# ask the protocol questionnaire, and write protocol.json.
+# ask the protocol questionnaire, write protocol.json, run a baseline,
+# then ask whether to publish to the configured 0G Galileo registry.
 ```
 
-The current repository ships only `autoresearch-create`. Mining, status, validation, and on-chain publishing skills are planned sibling skills:
+The current repository ships only `autoresearch-create`. Mining, status, and validation skills are planned sibling skills:
 
 ```text
 autoresearch-create/
@@ -374,7 +407,7 @@ autoresearch-status/     # future
 autoresearch-validate/   # future
 ```
 
-The create skill now includes its discovery prompts, schema, questionnaire, baseline runner, and `program.md` renderer under `autoresearch-create/`.
+The create skill now includes its discovery prompts, schema, questionnaire, baseline runner, `program.md` renderer, WalletConnect QR publish CLI, and 0G Galileo deployment artifacts under `autoresearch-create/`.
 
 ---
 

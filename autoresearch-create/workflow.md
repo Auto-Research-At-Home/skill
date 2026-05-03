@@ -23,6 +23,7 @@ flowchart TB
     proto[protocol.json]
     render[Render program.md.j2]
     baseline[Dry run plus baseline log]
+    publish[Ask to publish on 0G]
   end
 
   subgraph phase2 [Phase 2 — Experiment loop]
@@ -43,7 +44,9 @@ flowchart TB
   merge --> proto
   proto --> render
   proto --> baseline
+  baseline --> publish
   baseline --> phase2
+  publish --> phase2
   render --> phase2
   edit --> run --> metric --> log --> gitkeep
 ```
@@ -76,6 +79,7 @@ flowchart LR
     PR[protocol.json finalized]
     MD[program.md rendered]
     BL[Baseline row plus optional run.log]
+    OC[On-chain project id plus token address]
   end
 
   A --> S
@@ -93,9 +97,10 @@ flowchart LR
   PR --> T
   T --> MD
   PR --> BL
+  BL --> OC
 ```
 
-**Reading left to right:** the human or automation starts from a **repo URL** (or `--existing-repo`). **`build_discovery_bundle`** is the main **entry point** that produces the **prompt bundle** (`discovery_user_filled.md`, `discovery_system.md`, `bundle_meta.json`). The **LLM** consumes those files and emits **`DiscoveryDraft` JSON**. The **questionnaire** plus merge step produces **`protocol.json`**, optional **`program.md`** via **Jinja**, and a **baseline** artifact after a **dry run**.
+**Reading left to right:** the human or automation starts from a **repo URL** (or `--existing-repo`). **`build_discovery_bundle`** is the main **entry point** that produces the **prompt bundle** (`discovery_user_filled.md`, `discovery_system.md`, `bundle_meta.json`). The **LLM** consumes those files and emits **`DiscoveryDraft` JSON**. The **questionnaire** plus merge step produces **`protocol.json`**, optional **`program.md`** via **Jinja**, and a **baseline** artifact after a **dry run**. If the project is eligible, the agent asks the user whether to publish to the 0G Galileo registry as the next step.
 
 ---
 
@@ -112,6 +117,7 @@ flowchart LR
 | Render narrative | `python scripts/render_program_md.py path/to/protocol.json` (requires `pip install jinja2`) | Human-readable **`program.md`** (not automatic when JSON changes) |
 | Eligibility | `eligibility_rubric.md` | Decide `eligible` / `needs_harness` / `ineligible` |
 | Baseline | Run `execution.command` from protocol on pinned setup | Prove runnable; record first metric row |
+| Publish prompt | `scripts/publish_project_0g.mjs` + `contracts/0g-galileo-testnet/deployment.json` + `references/onchain-0g-galileo.md` | Ask to call `ProjectRegistry.createProject(...)` after a successful measured baseline |
 
 ---
 
@@ -127,6 +133,8 @@ flowchart LR
 | [`eligibility_rubric.md`](eligibility_rubric.md) | When Phase 1 can stop vs needs harness |
 | [`templates/program.md.j2`](templates/program.md.j2) | Renders agent-facing **`program.md`** |
 | [`archetypes.yaml`](archetypes.yaml) | Defaults and taxonomy reference |
+| [`contracts/0g-galileo-testnet/deployment.json`](contracts/0g-galileo-testnet/deployment.json) | Current 0G Galileo registry addresses and ABI artifact paths |
+| [`references/onchain-0g-galileo.md`](references/onchain-0g-galileo.md) | ABI-derived publish, miner, and verifier flow |
 
 ---
 
@@ -139,6 +147,7 @@ flowchart LR
 | **`bundle_meta.json`** | From the bundle script only: clone path, SHA, paths to schema — audit trail |
 | **`discovery_draft.json`** (retained) | Raw LLM output for debugging / reproducibility |
 | **Baseline record** | Row in `provenance.resultsLog` (e.g. `results.tsv`) + stored log artifact path |
+| **On-chain publish record** | Project id, project token address, transaction hash, chain id, and registry addresses when the user approves publishing |
 | **`needs_harness` follow-ups** | If rubric says so: issues or scripts to add before **`eligible`** |
 
 Phase 2 **only** needs the **protocol bundle** ( **`protocol.json`** + baseline policy + optional **`program.md`** ); it does **not** need to re-run discovery unless the repo or contract changes.

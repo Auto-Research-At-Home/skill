@@ -1,6 +1,6 @@
 ---
 name: autoresearch-create
-description: Create an Auto Research At Home experiment protocol from a GitHub repository or local checkout. Builds a discovery prompt bundle, emits a DiscoveryDraft JSON, asks the protocol questionnaire, finalizes protocol.json, and optionally renders program.md and runs a baseline. Use when the user asks to create/start/bootstrap an autoresearch or ARAH project from a repo.
+description: Create an Auto Research At Home experiment protocol from a GitHub repository or local checkout. Builds a discovery prompt bundle, emits a DiscoveryDraft JSON, asks the protocol questionnaire, finalizes protocol.json, renders program.md, runs a baseline, then asks the user whether to publish an eligible project to the configured on-chain registry. Use when the user asks to create/start/bootstrap an autoresearch or ARAH project from a repo.
 ---
 
 # autoresearch-create
@@ -24,6 +24,10 @@ Use the bundled experiment-protocol toolkit in this skill directory. Do not modi
 - `scripts/render_program_md.py` and `templates/program.md.j2`: render `program.md` from finalized `protocol.json`.
 - `scripts/preview_metrics.py`: print a focused benchmark review block from `protocol.json` for the Step 5b approval gate.
 - `scripts/run_baseline.sh`: run setup plus the primary command from `protocol.json` and parse the baseline metric.
+- `scripts/publish_project_0g.mjs`: prepare and publish `ProjectRegistry.createProject(...)` via WalletConnect/Reown QR signing, or write an unsigned transaction/dry-run artifact.
+- `contracts/0g-galileo-testnet/deployment.json`: deployed 0G Galileo testnet contract addresses and artifact paths.
+- `contracts/0g-galileo-testnet/artifacts/*.json`: ABI/artifact JSON for `ProjectRegistry`, `ProjectToken`, `ProposalLedger`, and `VerifierRegistry`.
+- `references/onchain-0g-galileo.md`: ABI-derived on-chain create, mining, and review flow. Read it only for publish/mining/review work.
 - `workflow.md`: detailed phase diagram. Read it when the user asks for process detail.
 
 ## Step 1: Collect inputs
@@ -176,6 +180,63 @@ scripts/run_baseline.sh <output-dir>/protocol.json <repo-path> --log <output-dir
 
 On success, capture `BASELINE_METRIC=<value>` and update or report the baseline artifact according to `protocol.json` fields `measurement.baselinePolicy` and `provenance`.
 
+## Step 8: Ask to publish on-chain
+
+Publishing is the handoff that lets other people discover and contribute to the open research project. After a measured baseline succeeds, make publishing the default next step for eligible projects.
+
+Only ask to publish after:
+
+- `meta.eligibility` is `eligible`
+- Step 5b benchmark approval is complete
+- `program.md` has been rendered or intentionally skipped
+- a measured baseline has succeeded
+
+Ask the user directly:
+
+```text
+The baseline is complete. Do you want me to publish this project to the 0G Galileo registry now?
+```
+
+Do not submit a transaction until the user approves publishing and the signing/wallet requirements are satisfied.
+
+The supported signing path is WalletConnect/Reown QR signing. Do not ask the user for a private key or seed phrase, and do not require a local private key environment variable.
+
+Read `references/onchain-0g-galileo.md` before preparing any transaction. Use `contracts/0g-galileo-testnet/deployment.json` for the active deployment:
+
+- chain ID `16602`
+- RPC `https://evmrpc-testnet.0g.ai`
+- `ProjectRegistry` `0xc84768e450534974C0DD5BAb7c1b695744124136`
+- `ProposalLedger` `0x701db5f8Ed847651209A438695dfe5520adD6A5A`
+- `VerifierRegistry` `0x257974E406f206BfAEd3abB8D93C232e3226f032`
+
+Prepare `ProjectRegistry.createProject(...)` arguments from the approved protocol and baseline artifacts:
+
+- `protocolHash`, `repoSnapshotHash`, `benchmarkHash`, and `baselineMetricsHash` must be `bytes32`.
+- `baselineAggregateScore` must be the agreed signed integer representation of the primary metric. Ask the user to confirm scaling for decimal metrics.
+- Ask for `tokenName`, `tokenSymbol`, `basePrice`, `slope`, and `minerPoolCap` if not already specified.
+
+After a successful transaction, record `projectId`, `tokenAddr`, transaction hash, chain ID, and contract addresses next to the protocol authoring bundle. Treat the emitted `ProjectCreated(projectId, creator, token, protocolHash)` event as canonical.
+
+Preferred command shape:
+
+```bash
+node scripts/publish_project_0g.mjs \
+  --protocol-json <output-dir>/protocol.json \
+  --repo-snapshot-file <repo-snapshot-artifact> \
+  --benchmark-file <benchmark-artifact> \
+  --baseline-metrics-file <output-dir>/baseline_run.log \
+  --baseline-aggregate-score <integer-score> \
+  --token-name "<name>" \
+  --token-symbol <symbol> \
+  --base-price <wei> \
+  --slope <wei> \
+  --miner-pool-cap <token-wei> \
+  --reown-project-id <project-id> \
+  --yes
+```
+
+Use `--dry-run` first when values are uncertain. Use `--baseline-metric <decimal> --metric-scale <integer>` instead of `--baseline-aggregate-score` when the measured metric needs deterministic scaling.
+
 ## Final response
 
 Report:
@@ -183,5 +244,6 @@ Report:
 1. path to `protocol.json`
 2. path to `program.md`, if rendered
 3. path to `baseline_run.log`, if run
-4. eligibility state and blockers, if any
-5. next action: review `protocol.json`, add harness if `needs_harness`, or proceed to baseline/publish flow if `eligible`
+4. on-chain project id, token address, and transaction hash, if published
+5. eligibility state and blockers, if any
+6. next action: review `protocol.json`, add harness if `needs_harness`, proceed to baseline, or ask to publish if `eligible` and baseline succeeded

@@ -17,8 +17,11 @@ This package lives **alongside** autoresearch-style training repos (for example 
 | [`scripts/build_discovery_bundle.py`](scripts/build_discovery_bundle.py) | Clone or scan a repo; fill discovery prompt placeholders |
 | [`scripts/run_baseline.sh`](scripts/run_baseline.sh) | Run setup + main command from `protocol.json` with OS-aware timeout (Linux `timeout`, macOS `gtimeout`, else Python) |
 | [`scripts/render_program_md.py`](scripts/render_program_md.py) | Render **`program.md`** from `protocol.json` + [`templates/program.md.j2`](templates/program.md.j2) (needs **`pip install jinja2`**) |
+| [`scripts/publish_project_0g.mjs`](scripts/publish_project_0g.mjs) | Publish an eligible baseline-approved project through WalletConnect/Reown QR signing |
 | [`requirements-tools.txt`](requirements-tools.txt) | Optional deps (`jinja2`) for render script |
 | [`workflow.md`](workflow.md) | End-to-end flow diagrams and entry points |
+| [`contracts/0g-galileo-testnet/`](contracts/0g-galileo-testnet/) | Deployment manifest and ABI artifacts for the configured 0G Galileo registry |
+| [`references/onchain-0g-galileo.md`](references/onchain-0g-galileo.md) | ABI-derived publish, mining, and verifier flow |
 
 ## Quick start — discovery bundle
 
@@ -60,6 +63,29 @@ python scripts/render_program_md.py ./out/protocol.json -o /path/to/target-repo/
 ```
 
 Updating **`protocol.json` does not** auto-run this step; re-run the render command whenever the protocol changes.
+
+## On-chain publish prompt
+
+After benchmark approval and a successful measured baseline, ask the user whether to publish to the 0G Galileo registry. Use [`references/onchain-0g-galileo.md`](references/onchain-0g-galileo.md) with [`contracts/0g-galileo-testnet/deployment.json`](contracts/0g-galileo-testnet/deployment.json) to prepare the `ProjectRegistry.createProject(...)` transaction after approval.
+
+Dry-run the transaction request before opening a wallet session:
+
+```bash
+node scripts/publish_project_0g.mjs \
+  --protocol-json ./out/protocol.json \
+  --repo-snapshot-file ./repo-snapshot.tar \
+  --benchmark-file ./benchmark.tar \
+  --baseline-metrics-file ./out/baseline_run.log \
+  --baseline-aggregate-score 12345 \
+  --token-name "Research Token" \
+  --token-symbol RCH \
+  --base-price 1000000000000000 \
+  --slope 1000000000000 \
+  --miner-pool-cap 1000000000000000000000000 \
+  --dry-run
+```
+
+To publish, replace `--dry-run` with `--reown-project-id <project-id> --yes`, scan the terminal QR code with a mobile wallet, approve the transaction in the wallet, and let the CLI poll the 0G RPC for the receipt.
 
 ## License
 
