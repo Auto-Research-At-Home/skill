@@ -48,7 +48,7 @@ Run one of these from the skill directory:
 For a Git URL (uses default clone dir `./.autoresearch/repos/<owner>-<name>`):
 
 ```bash
-python scripts/build_discovery_bundle.py <git-url> --output-dir <output-dir>
+python3 scripts/build_discovery_bundle.py <git-url> --output-dir <output-dir>
 ```
 
 Override the clone destination with `--clone-dir <path>` or use `--ephemeral` for a throwaway clone.
@@ -56,7 +56,7 @@ Override the clone destination with `--clone-dir <path>` or use `--ephemeral` fo
 For an existing checkout:
 
 ```bash
-python scripts/build_discovery_bundle.py --existing-repo <repo-path> --output-dir <output-dir>
+python3 scripts/build_discovery_bundle.py --existing-repo <repo-path> --output-dir <output-dir>
 ```
 
 Expected outputs:
@@ -127,7 +127,7 @@ The primary metric is the optimization target for every downstream experiment ru
 Run:
 
 ```bash
-python scripts/preview_metrics.py <output-dir>/protocol.json
+python3 scripts/preview_metrics.py <output-dir>/protocol.json
 ```
 
 This prints a focused review block: primary metric (name, direction, extract pattern, example stdout), execution command and timeout, baseline policy, and any secondary metrics. It also flags missing or weak fields.
@@ -147,7 +147,7 @@ Only proceed to Step 6 after the user **explicitly** confirms the benchmark. If 
 Only after Step 5b approval, render the agent-facing handoff:
 
 ```bash
-python scripts/render_program_md.py <output-dir>/protocol.json
+python3 scripts/render_program_md.py <output-dir>/protocol.json
 ```
 
 The rendered `program.md` opens with a prominent **Benchmark** section that mirrors the approved metric definition. Show this section to the user one more time and confirm it matches what they approved before handing the document off downstream.
@@ -155,7 +155,7 @@ The rendered `program.md` opens with a prominent **Benchmark** section that mirr
 If Jinja2 is missing, install the bundled optional tooling in the user's environment only after stating the command:
 
 ```bash
-python -m pip install -r requirements-tools.txt
+python3 -m pip install -r requirements-tools.txt
 ```
 
 Expected output:
