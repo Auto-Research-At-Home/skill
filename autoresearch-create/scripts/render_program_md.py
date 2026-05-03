@@ -16,15 +16,15 @@ import json
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _log  # noqa: E402
+
 
 def main() -> int:
     try:
         from jinja2 import Environment, FileSystemLoader
     except ImportError:
-        print(
-            "render_program_md: install Jinja2:  pip install jinja2",
-            file=sys.stderr,
-        )
+        _log.fail("Jinja2 missing — install with:  pip install jinja2")
         return 1
 
     parser = argparse.ArgumentParser(description="Render program.md from protocol.json")
@@ -51,22 +51,19 @@ def main() -> int:
     pkg_root = Path(__file__).resolve().parent.parent
     template_dir = args.template_dir or (pkg_root / "templates")
     if not (template_dir / "program.md.j2").is_file():
-        print(f"render_program_md: missing template: {template_dir / 'program.md.j2'}", file=sys.stderr)
+        _log.fail(f"missing template: {template_dir / 'program.md.j2'}")
         return 1
 
     path = args.protocol_json.resolve()
     if not path.is_file():
-        print(f"render_program_md: not found: {path}", file=sys.stderr)
+        _log.fail(f"not found: {path}")
         return 1
 
     text = path.read_text(encoding="utf-8")
     ctx = json.loads(text)
 
     if ctx.get("schemaKind") != "protocol":
-        print(
-            "render_program_md: expected schemaKind 'protocol' (finalize protocol before rendering).",
-            file=sys.stderr,
-        )
+        _log.fail("expected schemaKind 'protocol' (finalize protocol before rendering).")
         return 1
 
     env = Environment(
@@ -85,7 +82,8 @@ def main() -> int:
         out = out.resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(rendered, encoding="utf-8")
-    print(f"Wrote {out}")
+    _log.section("program.md rendered")
+    _log.detail(str(out))
     return 0
 
 

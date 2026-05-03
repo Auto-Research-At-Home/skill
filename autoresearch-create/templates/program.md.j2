@@ -22,6 +22,49 @@
 
 ---
 
+## Benchmark (the optimization target)
+
+> Every downstream experiment is judged by this metric. Confirm it matches intent before any agent runs against it.
+
+| Field | Value |
+|-------|-------|
+| **Primary metric** | **`{{ measurement.primaryMetric.name }}`** |
+| **Direction** | **`{{ measurement.primaryMetric.direction }}`** |
+| Extractor kind | `{{ measurement.primaryMetric.extract.kind }}` |
+{% if measurement.primaryMetric.extract.kind == 'regex' %}
+| Regex pattern | `{{ measurement.primaryMetric.extract.pattern }}` |
+{% endif %}
+| Run command | `{{ execution.command }}` |
+| Hard timeout | `{{ execution.hardTimeoutSeconds }}s` |
+
+{% if measurement.primaryMetric.extract.kind == 'regex' %}
+**Example stdout fragment the regex must match:**
+
+```
+{{ measurement.primaryMetric.extract.exampleStdout | default('(none provided — verify against a real run)') }}
+```
+{% endif %}
+
+{% if measurement.baselinePolicy %}
+**Baseline policy:**
+
+- Establish baseline on this hardware: `{{ measurement.baselinePolicy.establishOnHardware }}`
+- Same data snapshot for comparisons: `{{ measurement.baselinePolicy.sameDataSnapshot }}`
+{% if measurement.baselinePolicy.baselineNotes %}
+- Notes: {{ measurement.baselinePolicy.baselineNotes }}
+{% endif %}
+{% endif %}
+
+{% if measurement.secondaryMetrics %}
+**Secondary metrics:**
+
+{% for m in measurement.secondaryMetrics %}
+- `{{ m.name }}` — direction `{{ m.direction }}`
+{% endfor %}
+{% endif %}
+
+---
+
 ## Setup
 
 To prepare the environment:
@@ -101,38 +144,10 @@ Working directory: `{{ execution.cwd | default('.') }}`
 
 ### Goal
 
-Optimize **{{ measurement.primaryMetric.name }}** — **{{ measurement.primaryMetric.direction }}**.
+Optimize the metric defined in the [Benchmark](#benchmark-the-optimization-target) section above. Do not infer the goal from anywhere else in this document.
 
 {% if agentRules and agentRules.simplicityCriterion %}
 **Simplicity criterion:** Prefer simpler solutions when improvements are comparable.
-{% endif %}
-
-{% if measurement.baselinePolicy %}
-### Baseline policy
-
-- Establish baseline on this hardware: {{ measurement.baselinePolicy.establishOnHardware }}
-- Same data snapshot for comparisons: {{ measurement.baselinePolicy.sameDataSnapshot }}
-{% if measurement.baselinePolicy.baselineNotes %}
-- **Notes:** {{ measurement.baselinePolicy.baselineNotes }}
-{% endif %}
-{% endif %}
-
----
-
-## Output format
-
-After a successful run, extract the primary metric using:
-
-{% if measurement.primaryMetric.extract.kind == 'regex' %}
-- **Pattern:** `{{ measurement.primaryMetric.extract.pattern }}`
-
-Example stdout fragment:
-
-```
-{{ measurement.primaryMetric.extract.exampleStdout | default('(provide golden log excerpt)') }}
-```
-{% else %}
-- **Extractor kind:** `{{ measurement.primaryMetric.extract.kind }}`
 {% endif %}
 
 ---

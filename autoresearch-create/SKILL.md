@@ -22,6 +22,7 @@ Use the bundled experiment-protocol toolkit in this skill directory. Do not modi
 - `archetypes.yaml`: archetype taxonomy and defaults.
 - `eligibility_rubric.md`: rules for `eligible`, `needs_harness`, and `ineligible`.
 - `scripts/render_program_md.py` and `templates/program.md.j2`: render `program.md` from finalized `protocol.json`.
+- `scripts/preview_metrics.py`: print a focused benchmark review block from `protocol.json` for the Step 5b approval gate.
 - `scripts/run_baseline.sh`: run setup plus the primary command from `protocol.json` and parse the baseline metric.
 - `workflow.md`: detailed phase diagram. Read it when the user asks for process detail.
 
@@ -32,7 +33,7 @@ Ask for the target repository:
 - GitHub URL, or
 - absolute or relative path to an existing local checkout.
 
-If the user provides a URL, ask where to keep the clone. Default: `./.autoresearch/repos/<repo-name>` relative to the user's current working directory. Do not use the script's temporary-clone default unless the user explicitly wants a disposable clone.
+If the user provides a URL, the script clones into `./.autoresearch/repos/<owner>-<name>` relative to the user's current working directory by default. Pass `--clone-dir <path>` to override, or `--ephemeral` to clone into a system temp dir that is deleted on exit. If the default path already contains a git repo, it is reused (no re-clone).
 
 Ask where to write the protocol authoring bundle. Default: `<repo-or-clone>/.autoresearch/create`.
 
@@ -40,11 +41,13 @@ Ask where to write the protocol authoring bundle. Default: `<repo-or-clone>/.aut
 
 Run one of these from the skill directory:
 
-For a Git URL:
+For a Git URL (uses default clone dir `./.autoresearch/repos/<owner>-<name>`):
 
 ```bash
-python scripts/build_discovery_bundle.py <git-url> --clone-dir <clone-destination> --output-dir <output-dir>
+python scripts/build_discovery_bundle.py <git-url> --output-dir <output-dir>
 ```
+
+Override the clone destination with `--clone-dir <path>` or use `--ephemeral` for a throwaway clone.
 
 For an existing checkout:
 
@@ -113,13 +116,37 @@ Rules:
 - Use `needs_harness` when the project intent is valid but a wrapper, benchmark script, metric printer, fixture, or load generator must be added before baseline.
 - Use `ineligible` when the repo cannot support a bounded scalar experiment loop.
 
+## Step 5b: Benchmark review (HARD APPROVAL GATE)
+
+The primary metric is the optimization target for every downstream experiment run. A wrong name, wrong direction, or a regex that does not match real output silently corrupts the entire research loop. **Do not skip this step.**
+
+Run:
+
+```bash
+python scripts/preview_metrics.py <output-dir>/protocol.json
+```
+
+This prints a focused review block: primary metric (name, direction, extract pattern, example stdout), execution command and timeout, baseline policy, and any secondary metrics. It also flags missing or weak fields.
+
+Then ask the user, in plain language and one question at a time:
+
+1. Is the metric **name** the right thing to optimize for this project?
+2. Is the **direction** (minimize / maximize) correct?
+3. Will the **regex pattern** actually match what the command prints? Compare against the example stdout fragment shown.
+4. Is the **baseline policy** realistic on the user's hardware?
+5. Are the secondary metrics (if any) the right supporting signals?
+
+Only proceed to Step 6 after the user **explicitly** confirms the benchmark. If anything is wrong, return to Step 5 and update `protocol.json`, then re-run the preview. Do not paraphrase the metric to the user from memory — always show them the preview output.
+
 ## Step 6: Render program.md
 
-If the user wants the agent-facing handoff document, run:
+Only after Step 5b approval, render the agent-facing handoff:
 
 ```bash
 python scripts/render_program_md.py <output-dir>/protocol.json
 ```
+
+The rendered `program.md` opens with a prominent **Benchmark** section that mirrors the approved metric definition. Show this section to the user one more time and confirm it matches what they approved before handing the document off downstream.
 
 If Jinja2 is missing, install the bundled optional tooling in the user's environment only after stating the command:
 

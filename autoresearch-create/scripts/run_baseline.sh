@@ -10,6 +10,8 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=_log.sh
+source "$SCRIPT_DIR/_log.sh"
 
 usage() {
   echo "Usage: $0 <protocol.json> <repo_root> [--dry-run] [--log FILE]" >&2
@@ -34,12 +36,12 @@ while [[ $# -gt 0 ]]; do
 done
 
 if ! command -v jq >/dev/null 2>&1; then
-  echo "run_baseline: jq is required (brew install jq / apt install jq)." >&2
+  log_fail "jq is required (brew install jq / apt install jq)."
   exit 1
 fi
 
 if [[ ! -f "$PROTOCOL" ]]; then
-  echo "run_baseline: not found: $PROTOCOL" >&2
+  log_fail "protocol not found: $PROTOCOL"
   exit 1
 fi
 
@@ -83,14 +85,14 @@ raise SystemExit(subprocess.run(sys.argv[2:], timeout=s).returncode)' "$secs" "$
     return $?
   fi
 
-  echo "run_baseline: warning: no timeout (timeout/gtimeout/python3); running without wall limit." >&2
+  log_fail "no timeout binary (timeout/gtimeout/python3); running without wall limit."
   "$@"
   return $?
 }
 
 SKIND=$(jq -r '.schemaKind // empty' "$PROTOCOL")
 if [[ "$SKIND" != "protocol" ]]; then
-  echo "run_baseline: protocol.json must have schemaKind \"protocol\" (got: ${SKIND:-missing})." >&2
+  log_fail "protocol.json must have schemaKind \"protocol\" (got: ${SKIND:-missing})."
   exit 1
 fi
 
@@ -101,7 +103,7 @@ HARD=$(printf '%.0f' "$HARD")
 MAIN_CMD=$(jq -r '.execution.command // empty' "$PROTOCOL")
 
 if [[ -z "$MAIN_CMD" ]]; then
-  echo "run_baseline: execution.command is empty." >&2
+  log_fail "execution.command is empty."
   exit 1
 fi
 
@@ -112,18 +114,38 @@ if [[ -z "$LOG_FILE" ]]; then
   LOG_FILE="$WORKDIR/baseline_run.log"
 fi
 
-echo "run_baseline: repo=$REPO_ROOT workdir=$WORKDIR log=$LOG_FILE os=$UNAME_S timeout_sec=$HARD"
+log_section "baseline"
+log_detail "workdir: $WORKDIR"
+log_detail "log:     $LOG_FILE"
+log_detail "timeout: ${HARD}s   os: $UNAME_S"
+
+# Read setup commands once into an array so we can summarize cleanly.
+SETUP_CMDS=()
+while IFS= read -r cmd; do
+  [[ -z "$cmd" ]] && continue
+  SETUP_CMDS+=("$cmd")
+done < <(jq -r '.environment.setupCommands[]? // empty' "$PROTOCOL")
 
 run_setup() {
-  local cmd
-  while IFS= read -r cmd; do
-    [[ -z "$cmd" ]] && continue
-    echo "run_baseline: setup: $cmd"
+  local n=${#SETUP_CMDS[@]}
+  if [[ "$n" -eq 0 ]]; then
+    return 0
+  fi
+  log_section "baseline · setup ($n command$([[ $n -eq 1 ]] || echo s))"
+  local i=0
+  if [[ "$n" -gt 5 ]]; then
+    log_detail "(verbose; collapsed — full output streams below)"
+  fi
+  for cmd in "${SETUP_CMDS[@]}"; do
+    i=$((i + 1))
+    if [[ "$n" -le 5 ]]; then
+      log_detail "[$i/$n] $cmd"
+    fi
     if [[ "$DRY_RUN" -eq 1 ]]; then
       continue
     fi
     (cd "$WORKDIR" && bash -lc "$cmd")
-  done < <(jq -r '.environment.setupCommands[]? // empty' "$PROTOCOL")
+  done
 }
 
 extract_metric() {
@@ -140,11 +162,11 @@ pattern = ext.get("pattern") or ""
 with open(log_path, encoding="utf-8", errors="replace") as f:
     text = f.read()
 if kind != "regex":
-    print("run_baseline: extract kind is not regex; print log and inspect manually.", file=sys.stderr)
+    print("extract kind is not regex; inspect log manually.", file=sys.stderr)
     sys.exit(2)
 m = re.search(pattern, text, re.MULTILINE)
 if not m:
-    print("run_baseline: primary metric regex did not match log.", file=sys.stderr)
+    print("primary metric regex did not match log.", file=sys.stderr)
     sys.exit(3)
 val = m.group(1) if m.lastindex else m.group(0)
 print(val)
@@ -152,30 +174,38 @@ PY
 }
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
-  echo "[dry-run] would run setup commands from protocol, then:"
-  echo "[dry-run] (cd \"$WORKDIR\" && ... timeout ${HARD}s ... bash -lc $(printf %q "$MAIN_CMD")) |& tee \"$LOG_FILE\""
+  log_section "baseline · dry run"
+  if [[ ${#SETUP_CMDS[@]} -gt 0 ]]; then
+    log_detail "would run ${#SETUP_CMDS[@]} setup command(s) from protocol"
+  fi
+  log_detail "would run: (cd \"$WORKDIR\" && timeout ${HARD}s bash -lc <main>) |& tee \"$LOG_FILE\""
+  log_detail "main: $MAIN_CMD"
   exit 0
 fi
 
 run_setup
 
-echo "run_baseline: main command (timeout ${HARD}s): $MAIN_CMD"
+log_section "baseline · run (timeout ${HARD}s)"
+log_detail "main: $MAIN_CMD"
+log_detail "(streaming to $LOG_FILE)"
+
 set +e
 cd "$WORKDIR" && run_with_timeout "$HARD" bash -lc "$MAIN_CMD" 2>&1 | tee "$LOG_FILE"
 EXIT_MAIN=${PIPESTATUS[0]}
 set -e
 
-echo "run_baseline: main exit code=$EXIT_MAIN"
-
+log_section "baseline · result"
 METRIC=""
 if [[ "$EXIT_MAIN" -eq 0 ]]; then
-  if METRIC=$(extract_metric "$LOG_FILE"); then
+  if METRIC=$(extract_metric "$LOG_FILE" 2>/tmp/baseline_extract_err.$$); then
+    log_ok "exit 0   metric=$METRIC"
     echo "BASELINE_METRIC=$METRIC"
   else
-    echo "run_baseline: could not parse metric from log (see stderr)." >&2
+    log_fail "exit 0 but metric not extractable: $(cat /tmp/baseline_extract_err.$$ 2>/dev/null)"
   fi
+  rm -f /tmp/baseline_extract_err.$$
 else
-  echo "run_baseline: main command failed; skipping metric extraction." >&2
+  log_fail "main command failed (exit $EXIT_MAIN); skipping metric extraction."
 fi
 
 exit "$EXIT_MAIN"

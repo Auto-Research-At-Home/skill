@@ -32,6 +32,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _log  # noqa: E402
+
 
 SKIP_DIR_NAMES = {
     ".git",
@@ -357,7 +360,12 @@ def main() -> int:
     parser.add_argument(
         "--clone-dir",
         type=Path,
-        help="Clone destination directory. Default: tempfile under system temp.",
+        help="Clone destination directory. Default: ./.autoresearch/repos/<owner>-<name>.",
+    )
+    parser.add_argument(
+        "--ephemeral",
+        action="store_true",
+        help="Clone into a system temp directory and delete on exit (overrides default).",
     )
     parser.add_argument(
         "--output-dir",
@@ -380,7 +388,7 @@ def main() -> int:
     args = parser.parse_args()
 
     if not TEMPLATE_USER.is_file():
-        print(f"Missing template: {TEMPLATE_USER}", file=sys.stderr)
+        _log.fail(f"missing template: {TEMPLATE_USER}")
         return 1
 
     tmp_ctx: tempfile.TemporaryDirectory[str] | None = None
@@ -389,23 +397,38 @@ def main() -> int:
     if args.existing_repo:
         repo_path = args.existing_repo.resolve()
         if not repo_path.is_dir():
-            print(f"Not a directory: {repo_path}", file=sys.stderr)
+            _log.fail(f"not a directory: {repo_path}")
             return 1
+        _log.section("discovery · using existing checkout")
+        _log.detail(str(repo_path))
     else:
         if not args.repo:
-            print("Provide a git URL or use --existing-repo.", file=sys.stderr)
+            _log.fail("provide a git URL or use --existing-repo.")
             return 1
-        if args.clone_dir:
-            dest = args.clone_dir
-            if dest.exists():
-                print(f"Clone dir already exists: {dest}", file=sys.stderr)
-                return 1
-            clone_repo(args.repo, dest, args.branch, args.clone_depth)
-            repo_path = dest
-        else:
+
+        if args.ephemeral:
             tmp_ctx = tempfile.TemporaryDirectory(prefix="discovery_bundle_")
             dest = Path(tmp_ctx.name) / "repo"
+        elif args.clone_dir:
+            dest = args.clone_dir.resolve()
+        else:
+            owner, name, _hint = parse_repo_identity(args.repo)
+            slug = f"{owner}-{name}" if owner != "N/A" else (name if name != "N/A" else "repo")
+            dest = (Path.cwd() / ".autoresearch" / "repos" / slug).resolve()
+
+        _log.section(f"discovery · cloning {args.repo}")
+        _log.detail(f"into {dest}")
+
+        if dest.exists() and not tmp_ctx:
+            if (dest / ".git").is_dir():
+                _log.ok(f"reusing existing clone at {dest}")
+                repo_path = dest
+            else:
+                _log.fail(f"clone dir already exists and is not a git repo: {dest}")
+                return 1
+        else:
             clone_repo(args.repo, dest, args.branch, args.clone_depth)
+            _log.ok("clone complete")
             repo_path = dest
 
     try:
@@ -463,19 +486,17 @@ def main() -> int:
                 "discoverySystem": str(out_system.resolve()) if out_system.is_file() else None,
             },
             "shallowClone": args.existing_repo is None,
-            "clonePreserved": bool(args.clone_dir) or bool(args.existing_repo),
+            "clonePreserved": tmp_ctx is None,
         }
         out_meta.write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
-        print(f"Wrote {out_user}")
-        print(f"Wrote {out_system}")
-        print(f"Wrote {out_meta}")
-        if tmp_ctx and not args.clone_dir:
-            print(
-                "\nNote: repository was cloned to a temporary directory that will be deleted when this process exits.\n"
-                "       Pass --clone-dir to keep the clone, or use --existing-repo.",
-                file=sys.stderr,
-            )
+        _log.section("discovery bundle ready")
+        _log.detail(f"repo:   {repo_path} @ {sha[:7]}")
+        _log.detail(f"output: {args.output_dir.resolve()}/")
+        for fname in ("discovery_user_filled.md", "discovery_system.md", "bundle_meta.json"):
+            _log.detail(f"        - {fname}")
+        if tmp_ctx is not None:
+            _log.detail("note: clone is ephemeral and will be deleted on exit (--ephemeral)")
         return 0
     finally:
         if tmp_ctx is not None:
