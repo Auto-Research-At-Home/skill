@@ -1,6 +1,6 @@
 # 0G Galileo — miner path (excerpt)
 
-This file distills the **miner submit path** from [`autoresearch-create/references/onchain-0g-galileo.md`](../../../../autoresearch-create/references/onchain-0g-galileo.md). Use that doc for full deployment tables and publish (`createProject`) flow.
+This file distills the **miner submit path** from [`autoresearch-create/references/onchain-0g-galileo.md`](../../autoresearch-create/references/onchain-0g-galileo.md). Use that doc for full deployment tables and publish (`createProject`) flow.
 
 ## Deployment layout
 

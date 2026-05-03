@@ -13,7 +13,7 @@ DST=autoresearch-mine/contracts/0g-galileo-testnet
 cp "$SRC/deployment.json" "$DST/"
 cp "$SRC/artifacts/"*.json "$DST/artifacts/"
 # Refresh the miner reference excerpt if onchain-0g-galileo.md changed materially:
-# edit autoresearch-mine/contracts/0g-galileo-testnet/references/onchain-mining-0g.md
+# edit autoresearch-mine/references/onchain-mining-0g.md
 ```
 
 Canonical documentation for parity remains [`autoresearch-create/references/onchain-0g-galileo.md`](../../autoresearch-create/references/onchain-0g-galileo.md).

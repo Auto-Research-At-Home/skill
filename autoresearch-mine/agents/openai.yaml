@@ -1,0 +1,4 @@
+interface:
+  display_name: "Autoresearch Mine"
+  short_description: "Run unattended ARAH mining trials"
+  default_prompt: "Use $autoresearch-mine to run mining trials against a finalized protocol.json and target repo."
