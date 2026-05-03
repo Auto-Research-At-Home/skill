@@ -2,25 +2,69 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/autoresearch/experiment-protocol/network_state.schema.json",
   "title": "MiningNetworkState",
-  "description": ".autoresearch/mine/network_state.json — manual frontier for PR gating (v1)",
-  "type": "object",
-  "additionalProperties": false,
-  "required": [
-    "schemaVersion",
-    "source",
-    "protocolBundleId",
-    "network_best_metric",
-    "metric_name",
-    "direction",
-    "updated_at"
-  ],
-  "properties": {
-    "schemaVersion": { "const": "1" },
-    "source": { "const": "manual" },
-    "protocolBundleId": { "type": "string" },
-    "network_best_metric": { "type": ["number", "null"] },
-    "metric_name": { "type": "string" },
-    "direction": { "type": "string", "enum": ["minimize", "maximize"] },
-    "updated_at": { "type": "string", "format": "date-time" }
-  }
+  "description": ".autoresearch/mine/network_state.json — manual frontier (v1) or registry sync (0G)",
+  "oneOf": [
+    {
+      "title": "Manual network best",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "source",
+        "protocolBundleId",
+        "network_best_metric",
+        "metric_name",
+        "direction",
+        "updated_at"
+      ],
+      "properties": {
+        "schemaVersion": { "const": "1" },
+        "source": { "const": "manual" },
+        "protocolBundleId": { "type": "string" },
+        "network_best_metric": { "type": ["number", "null"] },
+        "metric_name": { "type": "string" },
+        "direction": { "type": "string", "enum": ["minimize", "maximize"] },
+        "updated_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    {
+      "title": "ProjectRegistry frontier",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "source",
+        "protocolBundleId",
+        "project_id",
+        "chain_id",
+        "project_registry",
+        "network_best_metric",
+        "aggregate_score_int256",
+        "metric_scale",
+        "metric_name",
+        "direction",
+        "updated_at"
+      ],
+      "properties": {
+        "schemaVersion": { "const": "1" },
+        "source": { "const": "registry" },
+        "protocolBundleId": { "type": "string" },
+        "project_id": { "type": "integer", "minimum": 0 },
+        "chain_id": { "type": "integer" },
+        "project_registry": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{40}$"
+        },
+        "network_best_metric": { "type": ["number", "null"] },
+        "aggregate_score_int256": {
+          "type": "string",
+          "pattern": "^-?[0-9]+$"
+        },
+        "metric_scale": { "type": "integer", "minimum": 1 },
+        "metric_name": { "type": "string" },
+        "direction": { "type": "string", "enum": ["minimize", "maximize"] },
+        "updated_at": { "type": "string", "format": "date-time" }
+      }
+    }
+  ]
 }

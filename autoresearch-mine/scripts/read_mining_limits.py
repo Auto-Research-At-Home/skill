@@ -71,10 +71,18 @@ def main() -> int:
         eb = _env_bool("MINING_STOP_AFTER_PR")
         stop_after = True if eb is None else eb
 
+    on_chain_project_id = _env_int("ARAH_PROJECT_ID")
+    if on_chain_project_id is None:
+        oc = ml.get("onChainProjectId")
+        if oc is not None:
+            on_chain_project_id = int(oc)
+
     print(f"max_trials={int(max_trials)}")
     print(f"max_session_wall_seconds={max_session}")
     print(f"max_stagnant_trials={int(max_stagnant)}")
     print(f"stop_after_pr={'true' if stop_after else 'false'}")
+    if on_chain_project_id is not None:
+        print(f"on_chain_project_id={int(on_chain_project_id)}")
     return 0
 
 

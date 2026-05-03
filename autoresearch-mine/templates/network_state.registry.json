@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "1",
+  "source": "registry",
+  "protocolBundleId": "REPLACE_WITH_protocol.meta.protocolBundleId",
+  "project_id": 0,
+  "chain_id": 16602,
+  "project_registry": "0x0000000000000000000000000000000000000000",
+  "network_best_metric": null,
+  "aggregate_score_int256": "0",
+  "metric_scale": 1000000,
+  "metric_name": "REPLACE_WITH_measurement.primaryMetric.name",
+  "direction": "minimize",
+  "updated_at": "2026-01-01T00:00:00Z"
+}

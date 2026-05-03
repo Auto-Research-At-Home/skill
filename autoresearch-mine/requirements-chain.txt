@@ -1,0 +1,3 @@
+# Optional: scripts/sync_registry_frontier.py and scripts/submit_proposal.py
+web3>=6.0.0
+eth-account>=0.10.0

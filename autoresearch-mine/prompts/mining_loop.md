@@ -4,9 +4,10 @@ You run the **outer mining loop** without asking the human between trials.
 
 ## Before each batch of iterations
 
-1. Run `read_mining_limits.py <protocol.json>` and parse `KEY=value` lines:
+1. If mining against an on-chain project: when **`read_mining_limits.py`** prints **`on_chain_project_id=…`** (from **`miningLoop.onChainProjectId`** or env **`ARAH_PROJECT_ID`**), refresh **`network_state.json`** with **`sync_registry_frontier.py`** using that id—same **`--metric-scale`** as `createProject`—so comparisons use the current registry best.
+2. Run `read_mining_limits.py <protocol.json>` and parse `KEY=value` lines:
    - `max_trials`, `max_session_wall_seconds` (-1 = no cap), `max_stagnant_trials` (-1 = no stagnation stop), `stop_after_pr`.
-2. Track: trial count (every completed append to `trials.jsonl`), session wall time from first `run_trial.sh` start, consecutive non-improvements (increment when no new **local** best; reset on commit that improves local best).
+3. Track: trial count (every completed append to `trials.jsonl`), session wall time from first `run_trial.sh` start, consecutive non-improvements (increment when no new **local** best; reset on commit that improves local best).
 
 ## Each iteration
 

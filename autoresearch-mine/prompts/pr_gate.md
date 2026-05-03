@@ -21,4 +21,4 @@ Use the trial row JSON file or the full `trials.jsonl` (last line used).
 - **`gh`** installed and authenticated (`GH_TOKEN` / `GITHUB_TOKEN` for CI).
 - Current branch pushed if your fork/remote requires it (`gh pr create` needs a remote branch).
 
-Race conditions with other miners are **out of scope** until an on-chain registry exists—humans merge competing PRs.
+When **`network_state.source`** is **`registry`**, the frontier reflects **`ProjectRegistry.currentBestAggregateScore`** (re-sync before judging “beats network”). GitHub PR overlap with other miners remains a social merge layer—on-chain **`submit`** is separate (see **`submit_proposal.py`**).

@@ -18,6 +18,6 @@ flowchart LR
 
 - **Per-trial** time limits: `execution` in `protocol.json` (see `run_baseline.sh`).
 - **Outer session** limits: optional `miningLoop` in `protocol.json`, merged by `read_mining_limits.py` with env fallbacks.
-- **Frontier** for PRs: `.autoresearch/mine/network_state.json` (manual in v1).
+- **Frontier** for PRs: `.autoresearch/mine/network_state.json` — **manual** (`source: manual`) or synced from **`ProjectRegistry`** on 0G Galileo (`source: registry`; see **`scripts/sync_registry_frontier.py`**).
 
 See [autoresearch-create/workflow.md](../autoresearch-create/workflow.md) for Phase 1 touch points.

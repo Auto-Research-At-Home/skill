@@ -12,7 +12,7 @@ You are preparing an **autoresearch-mine** workspace. Operate **unattended**: do
 
 1. Export `GIT_TERMINAL_PROMPT=0` for all subsequent shell/git operations.
 2. Run `init_mine_workspace.sh <repo_root>` from `autoresearch-mine/scripts/`.
-3. Edit `.autoresearch/mine/network_state.json` so `protocolBundleId`, `metric_name`, and `direction` match `protocol.json`, or run `validate_network_state.sh` after filling the template values.
+3. Set `.autoresearch/mine/network_state.json`: either edit **`templates/network_state.manual.json`** placeholders, **or** call **`sync_registry_frontier.py`** with **`--project-id`**, **`--repo-root`**, and **`--protocol-json`** so `source` is **`registry`** (requires **`pip install -r requirements-chain.txt`**). Then run **`validate_network_state.sh`**.
 4. Run `preview_mining_context.sh <protocol.json>` (uses bundled `vendor/harness/preview_metrics.py`).
 5. Run `python3 read_mining_limits.py <protocol.json>` and record limits for the loop.
 
