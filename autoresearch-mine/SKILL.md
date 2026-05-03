@@ -49,7 +49,7 @@ Install Python chain deps once: **`pip install -r requirements-chain.txt`** (e.g
 ### Stop conditions (protocol-first)
 
 1. **Per trial:** `execution.hardTimeoutSeconds` and `execution.stopCondition` — enforced only by **`run_baseline.sh`** via **`run_trial.sh`**. Never shorten these in the mine skill.
-2. **Outer session:** optional **`miningLoop`** in `protocol.json` (also rendered in `program.md`). Query merged limits with **`read_mining_limits.py`** (see `workflow.md`).
+2. **Outer session:** optional **`miningLoop`** in `protocol.json` (also rendered in `program.md`). Query merged limits with **`read_mining_limits.py`** (see [`references/workflow.md`](references/workflow.md)).
 
 ## Machine layout (under target repo root)
 
@@ -66,9 +66,13 @@ Initialize with **`init_mine_workspace.sh`**. Seed **`network_state.json`** from
 
 | Resource | Role |
 |----------|------|
-| `contracts/0g-galileo-testnet/` | Vendored **`deployment.json`** + ABI artifacts for **`ProjectRegistry`**, **`ProposalLedger`**, **`ProjectToken`**, **`VerifierRegistry`** (sync from `autoresearch-create` per [`contracts/README.md`](contracts/README.md)). |
-| `contracts/.../references/onchain-mining-0g.md` | Miner-focused excerpt (hash rules, submit order). |
-| `vendor/harness/` | Vendored `run_baseline.sh`, `_log.sh`, `_log.py`, `preview_metrics.py` (trial harness; sync from create when upstream changes — see [`vendor/README.md`](vendor/README.md)). |
+| `references/overview.md` | Short maintainer-facing map for this skill. |
+| `references/workflow.md` | Phase 1 to Phase 2 workflow diagram and limits/frontier notes. |
+| `references/contracts-sync.md` | Maintainer instructions for refreshing vendored 0G deployment + ABI artifacts from `autoresearch-create`. |
+| `references/vendor-harness.md` | Maintainer instructions for refreshing vendored harness scripts from `autoresearch-create`. |
+| `references/onchain-mining-0g.md` | Miner-focused excerpt (hash rules, submit order). |
+| `contracts/0g-galileo-testnet/` | Vendored **`deployment.json`** + ABI artifacts for **`ProjectRegistry`**, **`ProposalLedger`**, **`ProjectToken`**, **`VerifierRegistry`**. |
+| `vendor/harness/` | Vendored `run_baseline.sh`, `_log.sh`, `_log.py`, `preview_metrics.py` trial harness. |
 | `scripts/_resolve_create_scripts.sh` | Resolve harness directory (default `vendor/harness`, override via env). |
 | `scripts/read_mining_limits.py` | Print `max_trials`, `max_session_wall_seconds`, `max_stagnant_trials`, `stop_after_pr`, and optionally **`on_chain_project_id`** (if `miningLoop.onChainProjectId` or **`ARAH_PROJECT_ID`** is set). |
 | `scripts/init_mine_workspace.sh` | Create `.autoresearch/mine` tree. |
@@ -145,7 +149,7 @@ On improvement vs local best: **`commit_improvement.sh`**. Else: **`revert_mutab
 
 ### 6. Optional on-chain submit
 
-After a winning trial, optionally publish a proposal (wallet + stake). See **`contracts/0g-galileo-testnet/references/onchain-mining-0g.md`** for **`bytes32`** hashing (SHA-256 of file bytes) and metric scale.
+After a winning trial, optionally publish a proposal (wallet + stake). See **[`references/onchain-mining-0g.md`](references/onchain-mining-0g.md)** for **`bytes32`** hashing (SHA-256 of file bytes) and metric scale.
 
 ```bash
 export ARAH_PRIVATE_KEY=...
