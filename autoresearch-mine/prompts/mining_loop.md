@@ -4,10 +4,11 @@ You run the **outer mining loop** without asking the human between trials.
 
 ## Before each batch of iterations
 
-1. If mining against an on-chain project: when **`read_mining_limits.py`** prints **`on_chain_project_id=…`** (from **`miningLoop.onChainProjectId`** or env **`ARAH_PROJECT_ID`**), refresh **`network_state.json`** with **`sync_registry_frontier.py`** using that id—same **`--metric-scale`** as `createProject`—so comparisons use the current registry best.
-2. Run `read_mining_limits.py <protocol.json>` and parse `KEY=value` lines:
+1. If mining against an on-chain project, confirm the wallet preflight has already passed with **`check_wallet.py`** for the project id or token address. Do not spend trials on an on-chain project without an EVM wallet in **`ARAH_PRIVATE_KEY`** that can sign and has gas. If the key is missing, ask the user to place `.env` in the current working directory with `ARAH_PRIVATE_KEY=0x...`; use `ARAH_STAKE_WEI` from `.env` when present, otherwise the default `1000000000000000000`.
+2. If mining against an on-chain project: when **`read_mining_limits.py`** prints **`on_chain_project_id=…`** (from **`miningLoop.onChainProjectId`** or env **`ARAH_PROJECT_ID`**), refresh **`network_state.json`** with **`sync_registry_frontier.py`** using that id—same **`--metric-scale`** as `createProject`—so comparisons use the current registry best.
+3. Run `read_mining_limits.py <protocol.json>` and parse `KEY=value` lines:
    - `max_trials`, `max_session_wall_seconds` (-1 = no cap), `max_stagnant_trials` (-1 = no stagnation stop), `stop_after_pr`.
-3. Track: trial count (every completed append to `trials.jsonl`), session wall time from first `run_trial.sh` start, consecutive non-improvements (increment when no new **local** best; reset on commit that improves local best).
+4. Track: trial count (every completed append to `trials.jsonl`), session wall time from first `run_trial.sh` start, consecutive non-improvements (increment when no new **local** best; reset on commit that improves local best).
 
 ## Each iteration
 
@@ -15,9 +16,11 @@ You run the **outer mining loop** without asking the human between trials.
 2. Record `git_head_before` from `git rev-parse HEAD` in `repo_root`.
 3. Run `run_trial.sh <protocol.json> <repo_root> <trial_id>` from `autoresearch-mine/scripts/`.
 4. Parse **`BASELINE_METRIC=<float>`** from the script stdout on success (same token as `run_baseline.sh`).
-5. Compare numerically using **`compare_metric.py`** — never compare floats in prose.
-6. If improved vs last local best: run `commit_improvement.sh <protocol.json> <repo_root> <trial_id> <before> <after>`; else run `revert_mutable_surface.sh <protocol.json> <repo_root>`.
-7. Build a JSON object for **`append_trial_record.py`** (see `prompts/results_logging.md`) and append one line to `trials.jsonl`.
+5. If mining against an on-chain project, refresh **`network_state.json`** again with **`sync_registry_frontier.py`** immediately before comparing; this avoids submitting against stale registry state.
+6. Compare numerically using **`compare_metric.py`** — never compare floats in prose.
+7. If improved vs last local best: run `commit_improvement.sh <protocol.json> <repo_root> <trial_id> <before> <after>`; else run `revert_mutable_surface.sh <protocol.json> <repo_root>`.
+8. If the metric beats `network_state.network_best_metric` after the fresh sync, create the on-chain proposal immediately. Call **`submit_trial_proposal.py`** with `--project-id` or `--token-address`, `--repo-root`, `--trial-id`, `--claimed-metric`, `--reward-recipient`, and `--auto-buy`. Only pass `--stake` when overriding `ARAH_STAKE_WEI` / the default stake. This is part of mining, not an optional follow-up.
+9. Build a JSON object for **`append_trial_record.py`** (see `prompts/results_logging.md`) and append one line to `trials.jsonl`.
 
 ## Per-trial time limits
 
@@ -29,4 +32,5 @@ Do **not** override `execution.hardTimeoutSeconds` or `execution.stopCondition`.
 - Session wall ≥ `max_session_wall_seconds` if that value is **≥ 0**
 - Stagnant trials ≥ `max_stagnant_trials` if that value is **≥ 0**
 - Successful PR when `stop_after_pr` is true (after `open_pr_with_evidence.sh` exits 0)
+- Successful on-chain proposal submit for a registry-best improvement, unless the user explicitly configured the run to continue mining after submit
 - Unrecoverable script failure (report once and exit)
