@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+"""Deterministic static checks: forbidden globs, permit globs, red-flag regex scan."""
+from __future__ import annotations
+
+import argparse
+import fnmatch
+import os
+import json
+import re
+import sys
+from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_RED_FLAGS = SCRIPT_DIR.parent / "watchouts" / "red_flags.txt"
+DEFAULT_PERMIT = [
+    "README*",
+    "LICENSE*",
+    "LICENSE.*",
+    ".gitignore",
+    "CONTRIBUTING*",
+    ".github/**",
+    ".autoresearch/**",
+]
+
+
+def match_any(path: str, globs: list[str]) -> bool:
+    path_f = path.replace("\\", "/")
+    for g in globs:
+        if fnmatch.fnmatch(path_f, g):
+            return True
+        base = path_f.split("/")[-1]
+        if fnmatch.fnmatch(base, g):
+            return True
+    return False
+
+
+def load_red_flag_patterns(path: Path) -> list[re.Pattern[str]]:
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    pats: list[re.Pattern[str]] = []
+    for line in lines:
+        s = line.strip()
+        if not s or s.startswith("#"):
+            continue
+        pats.append(re.compile(s))
+    return pats
+
+
+def iter_files(root: Path):
+    for p in root.rglob("*"):
+        if p.is_file():
+            rel = p.relative_to(root).as_posix()
+            if rel.startswith(".git/"):
+                continue
+            yield rel, p
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--protocol", type=Path, required=True)
+    ap.add_argument("--repo-root", type=Path, required=True)
+    ap.add_argument("--red-flags-file", type=Path, default=DEFAULT_RED_FLAGS)
+    args = ap.parse_args()
+    proto = json.loads(args.protocol.read_text(encoding="utf-8"))
+    ms = proto.get("mutableSurface") or {}
+    allowed = ms.get("allowedGlobs") or []
+    forbidden = ms.get("forbiddenGlobs") or []
+    ih = proto.get("immutableHarness") or {}
+    immutable = ih.get("paths") or []
+    permit = list(DEFAULT_PERMIT)
+    extra = os.environ.get("ARAH_EXTRA_PERMIT_GLOBS")
+    if extra:
+        permit.extend([x.strip() for x in extra.split(":") if x.strip()])
+    red_patterns = load_red_flag_patterns(args.red_flags_file) if args.red_flags_file.is_file() else []
+
+    root = args.repo_root.resolve()
+    if not root.is_dir():
+        print("repo root not found", file=sys.stderr)
+        return 2
+
+    text_suffixes = {".py", ".sh", ".md", ".txt", ".c", ".h", ".cpp", ".cc", ".rs", ".toml", ".yaml", ".yml", ".json"}
+    for rel, p in iter_files(root):
+        if match_any(rel, forbidden):
+            print(f"forbidden path touched: {rel}", file=sys.stderr)
+            return 3
+        permitted = match_any(rel, allowed) or match_any(rel, immutable) or match_any(rel, permit)
+        if not permitted:
+            print(f"path not on allowed/immutable/permit list: {rel}", file=sys.stderr)
+            return 4
+        suf = p.suffix.lower()
+        if suf in text_suffixes or p.name.endswith("Dockerfile"):
+            try:
+                body = p.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            for rx in red_patterns:
+                if rx.search(body):
+                    print(f"red flag pattern {rx.pattern!r} matched in {rel}", file=sys.stderr)
+                    return 5
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

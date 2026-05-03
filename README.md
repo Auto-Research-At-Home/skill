@@ -102,13 +102,16 @@ npx skills add Auto-Research-At-Home/skill --skill autoresearch-create
 
 # Or install only the mining skill (Phase 2 — trials against a finalized protocol)
 npx skills add Auto-Research-At-Home/skill --skill autoresearch-mine
+
+# Or install only the verifier skill (Phase 2 — ProposalLedger claim / approve / reject)
+npx skills add Auto-Research-At-Home/skill --skill autoresearch-validate
 ```
 
 The skills are portable Agent Skills: each capability is a directory with a `SKILL.md` file plus any supporting resources. The `skills` CLI installs them into supported hosts such as Claude Code, Cursor, and Codex.
 
-**Shipped today:** **`autoresearch-create`** helps researchers start from an existing GitHub repository, produce a versioned `protocol.json` plus `program.md`, run a baseline, then optionally publish an eligible project on-chain. **`autoresearch-mine`** runs the unattended mining loop on a finalized protocol and target checkout: bundled trial harness, `trials.jsonl`, optional GitHub PRs, and optional 0G **`ProjectRegistry`** frontier reads plus **`ProposalLedger.submit`** using contracts vendored under [`autoresearch-mine/contracts/`](autoresearch-mine/contracts/) (miners do not need `autoresearch-create` installed at runtime). Planned sibling skills cover status dashboards and validator-operator flows.
+**Shipped today:** **`autoresearch-create`** helps researchers start from an existing GitHub repository, produce a versioned `protocol.json` plus `program.md`, run a baseline, then optionally publish an eligible project on-chain. **`autoresearch-mine`** runs the unattended mining loop on a finalized protocol and target checkout: bundled trial harness, `trials.jsonl`, optional GitHub PRs, and optional 0G **`ProjectRegistry`** frontier reads plus **`ProposalLedger.submit`** using contracts vendored under [`autoresearch-mine/contracts/`](autoresearch-mine/contracts/) (miners do not need `autoresearch-create` installed at runtime). **`autoresearch-validate`** runs unattended verifier workflows against **`ProposalLedger`**: resolve miner artifacts by hash via a mandatory artifact index, rerun the bundled harness, apply deterministic static gates, then **`approve`** / **`reject`** using contracts vendored under [`autoresearch-validate/contracts/`](autoresearch-validate/contracts/). A planned sibling skill covers status dashboards.
 
-Skills handle the conversational, LLM-assisted workflow. Deterministic pieces already live in each skill’s scripts (baseline runs, mining loop helpers, on-chain sync/submit). Autonomous validator infrastructure and network-wide status surfaces are still future work.
+Skills handle the conversational, LLM-assisted workflow where applicable; validate scripts are fully deterministic for settlement paths.
 
 ---
 
@@ -338,7 +341,7 @@ zkML (zero-knowledge proofs for ML) remains the long-term ideal for fully trustl
 
 | Component | What it does | Technology |
 |---|---|---|
-| **Agent Skills** | User-facing entry points for create, baseline, mine, validate, and status flows | Agent Skills spec + skills.sh |
+| **Agent Skills** | User-facing entry points for create, baseline, mine, validate (`autoresearch-validate`), and status flows | Agent Skills spec + skills CLI |
 | **Protocol Generator** | Reads an existing GitHub repo, derives the research spec, and proposes a benchmark contract | Host coding agent LLM + skill resources |
 | **Sandbox Runner** | Executes the repo + benchmark in an isolated container to produce a verified, deterministic baseline score | Docker / Firecracker |
 | **Token Contract** | Bonding curve token per project with miner rewards pool | Solidity / EVM |
@@ -415,13 +418,21 @@ Use **`autoresearch-mine`** with a finalized **`protocol.json`** and a checkout 
 npx skills add Auto-Research-At-Home/skill --skill autoresearch-mine
 ```
 
+### Validate (Phase 2 — verifiers)
+
+Use **`autoresearch-validate`** with an **`ARAH_ARTIFACT_INDEX`** (or URL) that maps each on-chain **`codeHash`** to downloadable code + benchmark log bytes, **`ARAH_PRIVATE_KEY`** for an allowlisted verifier, and the bundled Galileo contracts under **`autoresearch-validate/contracts/`**. Install Python chain dependencies if you use RPC scripts: **`pip install -r autoresearch-validate/requirements-chain.txt`**. See [`autoresearch-validate/README.md`](autoresearch-validate/README.md) and [`autoresearch-validate/SKILL.md`](autoresearch-validate/SKILL.md).
+
+```bash
+npx skills add Auto-Research-At-Home/skill --skill autoresearch-validate
+```
+
 ### Repository layout
 
 ```text
-autoresearch-create/     # Phase 1 — protocol authoring, baseline, publish
+autoresearch-create/      # Phase 1 — protocol authoring, baseline, publish
 autoresearch-mine/        # Phase 2 — mining loop, optional 0G frontier + submit
+autoresearch-validate/    # Phase 2 — verifier harness + ProposalLedger approve/reject
 autoresearch-status/      # planned
-autoresearch-validate/    # planned
 ```
 
 ---

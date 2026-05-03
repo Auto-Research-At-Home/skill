@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://auto-research-at-home/schemas/review_record.schema.json",
+  "title": "Verifier review record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "review_id",
+    "utc_timestamp",
+    "proposal_id",
+    "project_id",
+    "result",
+    "reason_code",
+    "stdout_log_path",
+    "error"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "1" },
+    "review_id": { "type": "string", "minLength": 1 },
+    "utc_timestamp": { "type": "string", "minLength": 1 },
+    "proposal_id": { "type": "integer", "minimum": 0 },
+    "project_id": { "type": "integer", "minimum": 0 },
+    "result": {
+      "type": "string",
+      "enum": ["skipped", "approved", "rejected", "operational_failure"]
+    },
+    "reason_code": { "type": "string" },
+    "code_hash": { "type": "string" },
+    "benchmark_log_hash_ok": { "type": "boolean" },
+    "protocol_hash_ok": { "type": ["boolean", "null"] },
+    "claimed_aggregate_score": { "type": "string" },
+    "verified_aggregate_score": { "type": "string" },
+    "stdout_log_path": { "type": "string" },
+    "transaction_hashes": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "error": { "type": "string" }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "1",
+  "network": "0G Galileo testnet",
+  "chainId": 16602,
+  "proposalLedger": "0x701db5f8Ed847651209A438695dfe5520adD6A5A",
+  "note": "Status uint8 values follow ProposalLedger.sol enum declaration order. Override via env ARAH_STATUS_SUBMITTED etc. if your deployment differs.",
+  "status_names": {
+    "0": "Submitted",
+    "1": "Reviewing",
+    "2": "Approved",
+    "3": "Rejected",
+    "4": "Expired"
+  },
+  "claimable_status_codes": [0],
+  "terminal_status_codes": [2, 3, 4]
+}

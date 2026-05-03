@@ -1,0 +1,10 @@
+# One extended-regex per line (Python re syntax); matched against text files only.
+# Lines starting with # are ignored.
+BASELINE_METRIC=\s*[^\n]*fake
+curl\s+http
+wget\s+http
+requests\.get\(
+subprocess\.call\(\s*\[\s*[\"']curl
+eval\s*\(
+exec\s*\(
+__import__\s*\(\s*['\"]os['\"]

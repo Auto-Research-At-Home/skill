@@ -1,0 +1,5 @@
+{
+  "schemaVersion": "1",
+  "last_processed_block": 0,
+  "comment": "Optional: increment for bounded eth_getLogs scans of ProposalSubmitted (extend watch_proposals with events when needed)."
+}

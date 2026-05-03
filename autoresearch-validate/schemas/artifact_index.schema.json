@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://auto-research-at-home/schemas/artifact_index.schema.json",
+  "title": "ARAH verifier artifact index",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "entries"],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "1" },
+    "entries": {
+      "type": "object",
+      "description": "Map codeHash (0x + 64 hex, lowercase) to fetch instructions.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code_fetch_uri"],
+        "properties": {
+          "code_fetch_uri": { "type": "string", "minLength": 4 },
+          "benchmark_log_uri": { "type": "string" },
+          "benchmark_inline_path": {
+            "type": "string",
+            "description": "Path inside extracted tarball to the benchmark log file whose SHA-256 must match benchmarkLogHash."
+          }
+        }
+      }
+    }
+  }
+}
