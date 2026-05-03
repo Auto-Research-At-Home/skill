@@ -202,6 +202,32 @@
         }
       }
     },
+    "MiningLoop": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Optional outer mining-session limits (autoresearch-mine). Per-trial limits stay in execution.",
+      "properties": {
+        "maxTrials": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Stop after this many completed trials (each append to trials.jsonl counts)."
+        },
+        "maxSessionWallSeconds": {
+          "type": "number",
+          "minimum": 1,
+          "description": "Wall-clock budget for the whole mining session from first trial start."
+        },
+        "maxConsecutiveNonImprovements": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Stop after this many consecutive trials without a new local best."
+        },
+        "stopAfterSuccessfulPr": {
+          "type": "boolean",
+          "description": "If true, stop the outer loop after a successful gh PR (exit 0)."
+        }
+      }
+    },
     "MetricExtract": {
       "type": "object",
       "additionalProperties": false,
@@ -405,7 +431,8 @@
         "provenance": { "$ref": "#/$defs/Provenance" },
         "safety": { "$ref": "#/$defs/Safety" },
         "agentRules": { "$ref": "#/$defs/AgentRules" },
-        "archetypeExtensions": { "$ref": "#/$defs/ArchetypeExtensions" }
+        "archetypeExtensions": { "$ref": "#/$defs/ArchetypeExtensions" },
+        "miningLoop": { "$ref": "#/$defs/MiningLoop" }
       },
       "allOf": [
         {

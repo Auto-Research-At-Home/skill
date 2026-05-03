@@ -127,6 +127,26 @@ Working directory: `{{ execution.cwd | default('.') }}`
 {% endif %}
 {% endif %}
 
+{% if miningLoop %}
+### Mining session (outer loop)
+
+Limits for unattended **`autoresearch-mine`** sessions. Per-trial time limits are **only** those under [Stop condition](#experimentation) above.
+
+{% if miningLoop.maxTrials is defined %}
+- **Max trials:** {{ miningLoop.maxTrials }} (completed trials logged to `.autoresearch/mine/trials.jsonl`)
+{% endif %}
+{% if miningLoop.maxSessionWallSeconds is defined %}
+- **Max session wall-clock (seconds):** {{ miningLoop.maxSessionWallSeconds }} (from first trial start)
+{% endif %}
+{% if miningLoop.maxConsecutiveNonImprovements is defined %}
+- **Max consecutive non-improvements:** {{ miningLoop.maxConsecutiveNonImprovements }} (trials without a new local best)
+{% endif %}
+{% if miningLoop.stopAfterSuccessfulPr is defined %}
+- **Stop after successful PR:** {{ 'yes' if miningLoop.stopAfterSuccessfulPr else 'no' }}
+{% endif %}
+
+{% endif %}
+
 ### What you CAN do
 
 {% for g in mutableSurface.allowedGlobs %}
