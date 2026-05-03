@@ -1,0 +1,4 @@
+interface:
+  display_name: "Autoresearch Validate"
+  short_description: "Verify on-chain ARAH proposals"
+  default_prompt: "Use $autoresearch-validate to verify claimable ProposalLedger proposals with the configured artifact index."
