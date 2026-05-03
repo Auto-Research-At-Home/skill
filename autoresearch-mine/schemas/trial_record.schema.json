@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/autoresearch/experiment-protocol/trial_record.schema.json",
+  "title": "MiningTrialRecord",
+  "description": "One JSON Lines row appended to .autoresearch/mine/trials.jsonl",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "trial_id",
+    "utc_timestamp",
+    "protocol_bundle_id",
+    "run_ok",
+    "primary_metric_name",
+    "primary_metric_value",
+    "direction",
+    "beats_local_best",
+    "beats_network_best",
+    "stdout_log_path",
+    "git_head_before",
+    "git_head_after",
+    "harness_exit_code",
+    "error"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1" },
+    "trial_id": { "type": "string" },
+    "utc_timestamp": { "type": "string", "format": "date-time" },
+    "protocol_bundle_id": { "type": "string" },
+    "run_ok": { "type": "boolean" },
+    "primary_metric_name": { "type": "string" },
+    "primary_metric_value": { "type": ["number", "null"] },
+    "direction": { "type": "string", "enum": ["minimize", "maximize"] },
+    "beats_local_best": { "type": "boolean" },
+    "beats_network_best": { "type": "boolean" },
+    "stdout_log_path": { "type": "string" },
+    "git_head_before": { "type": ["string", "null"] },
+    "git_head_after": { "type": ["string", "null"] },
+    "harness_exit_code": { "type": "integer" },
+    "error": { "type": "string" },
+    "hypothesis": { "type": "string" }
+  }
+}

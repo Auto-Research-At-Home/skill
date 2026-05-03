@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/autoresearch/experiment-protocol/network_state.schema.json",
+  "title": "MiningNetworkState",
+  "description": ".autoresearch/mine/network_state.json — manual frontier for PR gating (v1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "source",
+    "protocolBundleId",
+    "network_best_metric",
+    "metric_name",
+    "direction",
+    "updated_at"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1" },
+    "source": { "const": "manual" },
+    "protocolBundleId": { "type": "string" },
+    "network_best_metric": { "type": ["number", "null"] },
+    "metric_name": { "type": "string" },
+    "direction": { "type": "string", "enum": ["minimize", "maximize"] },
+    "updated_at": { "type": "string", "format": "date-time" }
+  }
+}

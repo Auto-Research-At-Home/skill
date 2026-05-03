@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "1",
+  "trial_id": "trial-001",
+  "utc_timestamp": "2026-05-03T12:00:00Z",
+  "protocol_bundle_id": "proto-example",
+  "run_ok": true,
+  "primary_metric_name": "val_bpb",
+  "primary_metric_value": 2.41,
+  "direction": "minimize",
+  "beats_local_best": true,
+  "beats_network_best": false,
+  "stdout_log_path": ".autoresearch/mine/runs/trial-001/stdout.log",
+  "git_head_before": "abc1234",
+  "git_head_after": "def5678",
+  "harness_exit_code": 0,
+  "error": "",
+  "hypothesis": "Tune learning rate schedule."
+}

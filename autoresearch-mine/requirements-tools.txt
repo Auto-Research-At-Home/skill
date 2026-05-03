@@ -1,0 +1,2 @@
+# autoresearch-mine scripts use Python 3 stdlib only (no install required).
+# Authoring / program.md rendering still uses Jinja2 in autoresearch-create; see ../autoresearch-create/requirements-tools.txt

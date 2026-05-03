@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "1",
+  "source": "manual",
+  "protocolBundleId": "REPLACE_WITH_protocol.meta.protocolBundleId",
+  "network_best_metric": null,
+  "metric_name": "REPLACE_WITH_measurement.primaryMetric.name",
+  "direction": "minimize",
+  "updated_at": "2026-01-01T00:00:00Z"
+}
