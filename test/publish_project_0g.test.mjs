@@ -5,7 +5,9 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  applyStorageRootHashes,
   assertBytes32,
+  buildPublishArtifactPaths,
   buildCreateProjectInputs,
   createProjectArgsFromInputs,
   decimalMetricToScaledInt,
@@ -14,6 +16,7 @@ import {
   loadDeployment,
   parseArgs,
   parseProjectCreated,
+  storageIndexerRpc,
   toHexQuantity,
 } from "../autoresearch-create/scripts/publish_project_0g_lib.mjs";
 import {
@@ -111,12 +114,77 @@ test("builds createProject args from files and explicit values", () => {
   }
 });
 
+test("uses 0G Storage root hashes as createProject hashes when supplied", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "arah-publish-"));
+  const protocolJson = path.join(dir, "protocol.json");
+  const repo = path.join(dir, "repo.tar");
+  const benchmark = path.join(dir, "benchmark.tar");
+  const baseline = path.join(dir, "baseline.log");
+  fs.writeFileSync(protocolJson, "{}\n");
+  fs.writeFileSync(repo, "repo");
+  fs.writeFileSync(benchmark, "bench");
+  fs.writeFileSync(baseline, "metric=1");
+
+  const options = {
+    protocolJson,
+    repoSnapshotFile: repo,
+    benchmarkFile: benchmark,
+    baselineMetricsFile: baseline,
+    baselineAggregateScore: "7",
+    tokenName: "Research Token",
+    tokenSymbol: "RCH",
+    basePrice: "100",
+    slope: "2",
+    minerPoolCap: "1000000",
+  };
+
+  const storageOptions = applyStorageRootHashes(options, {
+    protocol: { rootHash: `0x${"11".repeat(32)}` },
+    repoSnapshot: { rootHash: `0x${"22".repeat(32)}` },
+    benchmark: { rootHash: `0x${"33".repeat(32)}` },
+    baselineMetrics: { rootHash: `0x${"44".repeat(32)}` },
+  });
+  const inputs = buildCreateProjectInputs(storageOptions);
+
+  assert.equal(inputs.protocolHash, `0x${"11".repeat(32)}`);
+  assert.equal(inputs.repoSnapshotHash, `0x${"22".repeat(32)}`);
+  assert.equal(inputs.benchmarkHash, `0x${"33".repeat(32)}`);
+  assert.equal(inputs.baselineMetricsHash, `0x${"44".repeat(32)}`);
+});
+
+test("plans publish artifact files for 0G Storage upload", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "arah-publish-"));
+  const protocolJson = path.join(dir, "protocol.json");
+  const repo = path.join(dir, "repo.tar");
+  const benchmark = path.join(dir, "benchmark.tar");
+  const baseline = path.join(dir, "baseline.log");
+  for (const file of [protocolJson, repo, benchmark, baseline]) {
+    fs.writeFileSync(file, "x");
+  }
+
+  const artifacts = buildPublishArtifactPaths({
+    protocolJson,
+    repoSnapshotFile: repo,
+    benchmarkFile: benchmark,
+    baselineMetricsFile: baseline,
+  });
+
+  assert.equal(artifacts.protocol.path, protocolJson);
+  assert.equal(artifacts.repoSnapshot.path, repo);
+  assert.equal(artifacts.benchmark.path, benchmark);
+  assert.equal(artifacts.baselineMetrics.path, baseline);
+});
+
 test("loads the 0G Galileo deployment manifest", () => {
   const deployment = loadDeployment(DEPLOYMENT);
   assert.equal(deployment.network.chainId, 16602);
   assert.equal(
     deployment.contracts.ProjectRegistry.address,
     "0xc84768e450534974C0DD5BAb7c1b695744124136",
+  );
+  assert.equal(
+    storageIndexerRpc({}, deployment),
+    "https://indexer-storage-testnet-turbo.0g.ai",
   );
 });
 
@@ -178,9 +246,10 @@ test("parses ProjectCreated from a receipt", async () => {
 });
 
 test("parses CLI flags and quantities", () => {
-  assert.deepEqual(parseArgs(["--yes", "--no-open", "--token-name", "T"]), {
+  assert.deepEqual(parseArgs(["--yes", "--no-open", "--upload-artifacts-to-0g", "--token-name", "T"]), {
     yes: true,
     noOpen: true,
+    uploadArtifactsTo0g: true,
     tokenName: "T",
   });
   assert.equal(toHexQuantity(16602), "0x40da");
@@ -335,6 +404,48 @@ test("local wallet publish server verifies approval before accepting tx hash", a
       message,
       txHash,
     });
+  } finally {
+    session.close();
+  }
+});
+
+test("local wallet publish server bridges wallet RPC requests", async () => {
+  const deployment = loadDeployment(DEPLOYMENT);
+  const session = await startLocalWalletPublish({
+    deployment,
+    open: false,
+    timeoutMs: 30_000,
+  });
+
+  try {
+    const accountPromise = session.eip1193Provider.request({
+      method: "eth_requestAccounts",
+    });
+    const accountResponse = await postJson(`${session.url.replace("/sign", "/account")}`, {
+      address: "0x1111111111111111111111111111111111111111",
+    });
+    assert.equal(accountResponse.status, 200);
+    assert.deepEqual(await accountPromise, [
+      "0x1111111111111111111111111111111111111111",
+    ]);
+
+    const txPromise = session.eip1193Provider.request({
+      method: "eth_sendTransaction",
+      params: [{ to: deployment.contracts.ProjectRegistry.address, value: "0x0" }],
+    });
+    const requestResponse = await fetch(`${session.url.replace("/sign", "/wallet-request")}`);
+    assert.equal(requestResponse.status, 200);
+    const { request } = await requestResponse.json();
+    assert.equal(request.method, "eth_sendTransaction");
+    assert.equal(request.params[0].to, deployment.contracts.ProjectRegistry.address);
+
+    const txHash = `0x${"56".repeat(32)}`;
+    const resultResponse = await postJson(`${session.url.replace("/sign", "/wallet-result")}`, {
+      id: request.id,
+      result: txHash,
+    });
+    assert.equal(resultResponse.status, 200);
+    assert.equal(await txPromise, txHash);
   } finally {
     session.close();
   }

@@ -212,10 +212,13 @@ Read `references/onchain-0g-galileo.md` before preparing any transaction. Use `c
 Prepare `ProjectRegistry.createProject(...)` arguments from the approved protocol and baseline artifacts:
 
 - `protocolHash`, `repoSnapshotHash`, `benchmarkHash`, and `baselineMetricsHash` must be `bytes32`.
+- Prefer `--upload-artifacts-to-0g`; then those fields are the 0G Storage root hashes and `storage_0g_galileo.json` records retrieval metadata.
 - `baselineAggregateScore` must be the agreed signed integer representation of the primary metric. Ask the user to confirm scaling for decimal metrics.
 - Ask for `tokenName`, `tokenSymbol`, `basePrice`, `slope`, and `minerPoolCap` if not already specified.
 
-After a successful transaction, record `projectId`, `tokenAddr`, transaction hash, chain ID, and contract addresses next to the protocol authoring bundle. Treat the emitted `ProjectCreated(projectId, creator, token, protocolHash)` event as canonical.
+0G Storage upload does not require a web2 API key. It requires a wallet signature and 0G balance for storage/chain fees. Use the localhost browser-wallet flow by default, or `ZG_STORAGE_PRIVATE_KEY` only when the user intentionally supplies a local publisher wallet. Do not use a backend-held key.
+
+After a successful transaction, record `projectId`, `tokenAddr`, transaction hash, chain ID, contract addresses, and `storage_0g_galileo.json` next to the protocol authoring bundle. Treat the emitted `ProjectCreated(projectId, creator, token, protocolHash)` event as canonical.
 
 Preferred command shape:
 
@@ -231,6 +234,7 @@ node scripts/publish_project_0g.mjs \
   --base-price <wei> \
   --slope <wei> \
   --miner-pool-cap <token-wei> \
+  --upload-artifacts-to-0g \
   --yes
 ```
 
