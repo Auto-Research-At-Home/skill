@@ -7,7 +7,7 @@ description: Verify Auto Research At Home mining proposals on-chain. Resolve cod
 
 Operate an **unattended verifier** against **`ProposalLedger`** on 0G Galileo (or override deployment via env). This skill **does not** watch GitHub PRs; settlement is **on-chain only**.
 
-**Self-contained:** Bundled harness under [`vendor/harness/`](vendor/harness/), contracts under [`contracts/0g-galileo-testnet/`](contracts/0g-galileo-testnet/), scripts mirror [`autoresearch-mine`](../autoresearch-mine/SKILL.md) ergonomics.
+**Self-contained:** Bundled harness under [`vendor/harness/`](vendor/harness/), contracts under [`contracts/0g-galileo-testnet/`](contracts/0g-galileo-testnet/), and local fixtures under [`fixtures/`](fixtures/) are included so the skill can run after installation without sibling skill folders.
 
 ## Prerequisites
 
@@ -89,6 +89,8 @@ Initialize with **`scripts/init_verify_workspace.sh <repo_root>`**.
 | `scripts/metrics_hash.py` | SHA-256 → bytes32 hex |
 | `scripts/parse_baseline_metric.py` | Parse `BASELINE_METRIC=` from harness log |
 | `references/onchain-verify-0g.md` | Verifier-specific hash + economics notes |
+| `references/onchain-mining-0g.md` | Miner submit-path context needed when interpreting proposals |
+| `fixtures/build_synthetic_fixture.py` | Builds local fixture data for `scripts/run_tests.sh` |
 
 ## Pipeline ordering (normative)
 
