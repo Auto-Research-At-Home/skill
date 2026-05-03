@@ -296,8 +296,17 @@ async function main() {
     txHash,
     projectId: event.projectId,
     tokenAddr: event.tokenAddr,
+    buy: {
+      tokenAddress: event.tokenAddr,
+      tokenSymbol: inputs.tokenSymbol,
+      chainIdHex: toHexQuantity(deployment.network.chainId),
+      basePrice: inputs.basePrice.toString(),
+      slope: inputs.slope.toString(),
+      minerPoolCap: inputs.minerPoolCap.toString(),
+      decimals: 18,
+    },
   });
-  await walletSession?.close({ delayMs: 3000 });
+  await walletSession?.close({ delayMs: 5000 });
   return 0;
 }
 

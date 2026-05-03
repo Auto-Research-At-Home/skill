@@ -653,6 +653,56 @@ function renderSignPage() {
     .success .kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; text-align: left; font-size: 13px; margin: 12px auto 0; max-width: 480px; }
     .success .kv dt { color: var(--muted); }
     .success .kv dd { margin: 0; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; word-break: break-all; }
+    .buy {
+      margin-top: 16px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 22px;
+      box-shadow: var(--shadow);
+    }
+    .buy h3 { margin: 0 0 4px; font-size: 17px; }
+    .buy .lede { margin: 0 0 16px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+    .preset-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    button.preset { border: 1px solid var(--border); background: var(--card); color: var(--fg); border-radius: 8px; padding: 9px 14px; font: inherit; cursor: pointer; }
+    button.preset.selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+    .buy-divider { display: flex; align-items: center; gap: 12px; margin: 14px 0; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
+    .buy-divider::before, .buy-divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+    .buy-input { display: flex; align-items: center; gap: 8px; }
+    .buy-input input {
+      flex: 1; min-width: 0;
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: 10px 12px; font: inherit; background: var(--card); color: var(--fg);
+    }
+    .buy-input input:focus { outline: none; border-color: var(--accent); }
+    .buy-input .unit { color: var(--muted); font-weight: 600; }
+    .quote {
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      background: var(--bg);
+      border: 1px dashed var(--border);
+      font-size: 13px;
+      min-height: 40px;
+    }
+    .quote.muted { color: var(--muted); }
+    .quote.error { border-style: solid; border-color: var(--error); color: var(--error); background: color-mix(in srgb, var(--error) 8%, transparent); }
+    .quote .big { font-size: 18px; font-weight: 600; color: var(--fg); }
+    .quote small { color: var(--muted); }
+    .buy-actions { display: flex; gap: 8px; margin-top: 14px; }
+    .buy-actions button.primary { flex: 1; }
+    .buy-result {
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--done) 10%, transparent);
+      border: 1px solid var(--done);
+      font-size: 13px;
+      word-break: break-all;
+      display: none;
+    }
+    .buy-result.visible { display: block; }
+    .buy-result.error { background: color-mix(in srgb, var(--error) 10%, transparent); border-color: var(--error); color: var(--error); }
     .summary {
       margin-top: 24px;
     }
@@ -813,7 +863,10 @@ function renderProgress() {
   }
 }
 
+let successRendered = false;
 function renderSuccess(completion = {}) {
+  if (successRendered) return;
+  successRendered = true;
   const txHash = completion.txHash;
   const projectId = completion.projectId;
   const tokenAddr = completion.tokenAddr;
@@ -826,6 +879,220 @@ function renderSuccess(completion = {}) {
     + '<p>You can return to the CLI — it has the receipt.</p>'
     + (kv ? '<dl class="kv">' + kv + '</dl>' : '')
     + '</div>';
+  if (completion.buy && completion.buy.tokenAddress && connectedProvider) {
+    mountBuyPanel(completion.buy);
+  }
+}
+
+const SELECTOR_TOTAL_SUPPLY = "0x18160ddd";
+const SELECTOR_COST_BETWEEN = "0x44523922";
+const SELECTOR_QUOTE_BUY = "0x4beb394c";
+const SELECTOR_BUY = "0xa6f2ae3a";
+
+function pad32(hex) { return hex.replace(/^0x/, "").padStart(64, "0"); }
+function encUint(bn) { return pad32(BigInt(bn).toString(16)); }
+
+function parseEth(input, decimals) {
+  const text = String(input || "").trim();
+  if (!text) return 0n;
+  if (!/^\\d*(?:\\.\\d*)?$/.test(text)) throw new Error("enter a number");
+  const [whole, frac = ""] = text.split(".");
+  const padded = (frac + "0".repeat(decimals)).slice(0, decimals);
+  return BigInt(whole || "0") * (10n ** BigInt(decimals)) + BigInt(padded || "0");
+}
+
+function formatEth(bn, decimals = 18, places = 6) {
+  const value = BigInt(bn);
+  const sign = value < 0n ? "-" : "";
+  const abs = value < 0n ? -value : value;
+  const str = abs.toString().padStart(decimals + 1, "0");
+  const intPart = str.slice(0, -decimals) || "0";
+  let fracPart = str.slice(-decimals).slice(0, places).replace(/0+$/, "");
+  return sign + (fracPart ? intPart + "." + fracPart : intPart);
+}
+
+function formatTokens(bn, decimals = 18, places = 4) {
+  const intFmt = formatEth(bn, decimals, places);
+  const [intPart, fracPart] = intFmt.split(".");
+  const grouped = intPart.replace(/\\B(?=(\\d{3})+(?!\\d))/g, ",");
+  return fracPart ? grouped + "." + fracPart : grouped;
+}
+
+async function ethCall(provider, to, data) {
+  const result = await provider.request({ method: "eth_call", params: [{ to, data }, "latest"] });
+  return BigInt(result || "0x0");
+}
+
+function debounce(fn, ms) {
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+
+function mountBuyPanel(buy) {
+  const decimals = Number(buy.decimals || 18);
+  const symbol = buy.tokenSymbol || "tokens";
+  const minerPoolCap = BigInt(buy.minerPoolCap || "0");
+  const tokenAddress = buy.tokenAddress;
+  const presets = [1, 5, 10];
+  const presetButtons = presets.map((pct) =>
+    '<button class="preset" data-pct="' + pct + '">' + pct + '% of cap</button>'
+  ).join("");
+  const html = '<div class="buy" id="buyPanel">'
+    + '<h3>Be early to the bonding curve</h3>'
+    + '<p class="lede">The price is at its starting point right now. Pick a quick amount of '
+    + escapeHtml(symbol) + ' to mint, or enter a custom 0G amount.</p>'
+    + '<div class="preset-row">' + presetButtons + '</div>'
+    + '<div class="buy-divider">or</div>'
+    + '<div class="buy-input">'
+    + '<input id="buyEth" type="text" inputmode="decimal" placeholder="0.0" autocomplete="off">'
+    + '<span class="unit">0G</span>'
+    + '</div>'
+    + '<div class="quote muted" id="buyQuote">Pick a preset or enter an amount above.</div>'
+    + '<div class="buy-actions">'
+    + '<button class="primary" id="buyBtn" disabled>Buy ' + escapeHtml(symbol) + '</button>'
+    + '<button class="ghost" id="skipBtn">Skip</button>'
+    + '</div>'
+    + '<div class="buy-result" id="buyResult"></div>'
+    + '</div>';
+  successCardEl.insertAdjacentHTML("beforeend", html);
+
+  const ethInput = document.getElementById("buyEth");
+  const quoteEl = document.getElementById("buyQuote");
+  const buyBtn = document.getElementById("buyBtn");
+  const skipBtn = document.getElementById("skipBtn");
+  const resultEl = document.getElementById("buyResult");
+  const presetEls = document.querySelectorAll("#buyPanel .preset");
+
+  let pendingEth = 0n;
+  let pendingTokensEstimate = 0n;
+  let busy = false;
+
+  function setQuote(html, cls = "") {
+    quoteEl.className = "quote " + cls;
+    quoteEl.innerHTML = html;
+  }
+
+  function selectPreset(btn) {
+    for (const el of presetEls) el.classList.remove("selected");
+    if (btn) btn.classList.add("selected");
+  }
+
+  async function quoteFromTokens(targetTokens) {
+    if (targetTokens <= 0n) {
+      setQuote("Enter a positive amount.", "muted");
+      pendingEth = 0n;
+      buyBtn.disabled = true;
+      return;
+    }
+    setQuote("Quoting…", "muted");
+    try {
+      const supply = await ethCall(connectedProvider, tokenAddress, SELECTOR_TOTAL_SUPPLY);
+      const data = SELECTOR_COST_BETWEEN + encUint(supply) + encUint(supply + targetTokens);
+      const cost = await ethCall(connectedProvider, tokenAddress, data);
+      pendingEth = cost;
+      pendingTokensEstimate = targetTokens;
+      buyBtn.disabled = cost === 0n;
+      setQuote(
+        '<div class="big">' + formatTokens(targetTokens, decimals) + " " + escapeHtml(symbol) + "</div>"
+        + '<small>≈ ' + formatEth(cost, 18) + " 0G at current supply</small>",
+      );
+    } catch (err) {
+      setQuote("Could not get a quote: " + escapeHtml(err.message || String(err)), "error");
+      buyBtn.disabled = true;
+    }
+  }
+
+  async function quoteFromEth(ethValue) {
+    if (ethValue <= 0n) {
+      setQuote("Enter a positive amount.", "muted");
+      pendingEth = 0n;
+      buyBtn.disabled = true;
+      return;
+    }
+    setQuote("Quoting…", "muted");
+    try {
+      const data = SELECTOR_QUOTE_BUY + encUint(ethValue);
+      const tokens = await ethCall(connectedProvider, tokenAddress, data);
+      pendingEth = ethValue;
+      pendingTokensEstimate = tokens;
+      buyBtn.disabled = tokens === 0n;
+      setQuote(
+        '<div class="big">≈ ' + formatTokens(tokens, decimals) + " " + escapeHtml(symbol) + "</div>"
+        + '<small>for ' + formatEth(ethValue, 18) + " 0G</small>",
+      );
+    } catch (err) {
+      setQuote("Could not get a quote: " + escapeHtml(err.message || String(err)), "error");
+      buyBtn.disabled = true;
+    }
+  }
+
+  for (const btn of presetEls) {
+    btn.addEventListener("click", () => {
+      selectPreset(btn);
+      const pct = Number(btn.dataset.pct);
+      if (minerPoolCap === 0n) {
+        setQuote("Miner pool cap is 0 — use the custom amount below.", "muted");
+        return;
+      }
+      const target = (minerPoolCap * BigInt(pct)) / 100n;
+      ethInput.value = "";
+      quoteFromTokens(target);
+    });
+  }
+
+  const debouncedEthQuote = debounce(() => {
+    selectPreset(null);
+    try {
+      const v = parseEth(ethInput.value, 18);
+      quoteFromEth(v);
+    } catch (err) {
+      setQuote(escapeHtml(err.message || String(err)), "error");
+      buyBtn.disabled = true;
+    }
+  }, 250);
+  ethInput.addEventListener("input", debouncedEthQuote);
+
+  skipBtn.addEventListener("click", () => {
+    document.getElementById("buyPanel").remove();
+  });
+
+  buyBtn.addEventListener("click", async () => {
+    if (busy || pendingEth <= 0n) return;
+    busy = true;
+    buyBtn.disabled = true;
+    skipBtn.disabled = true;
+    setQuote("Waiting for wallet approval…", "muted");
+    resultEl.classList.remove("visible", "error");
+    try {
+      const txHash = await connectedProvider.request({
+        method: "eth_sendTransaction",
+        params: [{
+          from: connectedAddress,
+          to: tokenAddress,
+          value: "0x" + pendingEth.toString(16),
+          data: SELECTOR_BUY,
+        }],
+      });
+      setQuote(
+        '<div class="big">Buy submitted</div>'
+        + '<small>~' + formatTokens(pendingTokensEstimate, decimals) + " " + escapeHtml(symbol) + " for " + formatEth(pendingEth, 18) + " 0G</small>",
+      );
+      resultEl.classList.add("visible");
+      resultEl.innerHTML = "Tx hash: <code>" + escapeHtml(txHash) + "</code>";
+      buyBtn.textContent = "Done";
+      buyBtn.disabled = true;
+      skipBtn.disabled = false;
+      skipBtn.textContent = "Close";
+    } catch (err) {
+      const message = err && err.code === 4001 ? "Wallet rejected the transaction." : (err.message || String(err));
+      resultEl.classList.add("visible", "error");
+      resultEl.textContent = message;
+      buyBtn.disabled = false;
+      skipBtn.disabled = false;
+      busy = false;
+      setQuote("Buy not submitted.", "muted");
+    }
+  });
 }
 
 function setWalletStatus(text, isError = false) {
