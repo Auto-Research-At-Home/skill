@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Submit a mining proposal: ProjectToken tokenOf → optional buy → approve → ProposalLedger.submit."""
+"""Submit a mining proposal: resolve project token → optional buy → approve → ProposalLedger.submit."""
 
 from __future__ import annotations
 
@@ -23,13 +23,7 @@ from chain_config import (
     project_registry_address,
     proposal_ledger_address,
 )
-
-try:
-    from eth_account import Account
-    from web3 import Web3
-except ImportError as e:
-    print("Install chain extras: pip install -r requirements-chain.txt", file=sys.stderr)
-    raise SystemExit(1) from e
+from env_utils import env_or_default_stake, load_dotenv_from_cwd, missing_private_key_message
 
 
 def hash_file_bytes32(file_path: Path) -> str:
@@ -90,7 +84,17 @@ def tx_summary(tx: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def send_or_dump(w3: Web3, account: Account, tx: dict[str, Any], dry_run: bool) -> Any:
+def load_chain_deps() -> tuple[Any, Any]:
+    try:
+        from eth_account import Account
+        from web3 import Web3
+    except ImportError as e:
+        print("Install chain extras: pip install -r requirements-chain.txt", file=sys.stderr)
+        raise SystemExit(1) from e
+    return Account, Web3
+
+
+def send_or_dump(w3: Any, account: Any, tx: dict[str, Any], dry_run: bool) -> Any:
     if dry_run:
         print(json.dumps(tx_summary(tx), indent=2))
         return None
@@ -104,9 +108,39 @@ def send_or_dump(w3: Web3, account: Account, tx: dict[str, Any], dry_run: bool) 
     return w3.eth.wait_for_transaction_receipt(h)
 
 
+def resolve_project_id(registry: Any, w3: Any, project_id: int | None, token_address: str | None) -> int:
+    if project_id is not None:
+        if token_address:
+            expected = w3.to_checksum_address(token_address)
+            actual = w3.to_checksum_address(registry.functions.tokenOf(project_id).call())
+            if actual != expected:
+                raise ValueError(f"--project-id token {actual} does not match --token-address {expected}")
+        return project_id
+    if not token_address:
+        raise ValueError("provide --project-id or --token-address")
+
+    target = w3.to_checksum_address(token_address)
+    next_project_id = int(registry.functions.nextProjectId().call())
+    for candidate in range(next_project_id):
+        try:
+            token = registry.functions.tokenOf(candidate).call()
+        except Exception:
+            continue
+        if token and w3.to_checksum_address(token) == target:
+            return candidate
+    raise ValueError(f"token address not found in ProjectRegistry: {token_address}")
+
+
 def main() -> int:
+    load_dotenv_from_cwd()
+
     p = argparse.ArgumentParser(description="Submit ProposalLedger.submit for a project (0G Galileo).")
-    p.add_argument("--project-id", type=int, required=True)
+    p.add_argument("--project-id", type=int)
+    p.add_argument(
+        "--token-address",
+        type=str,
+        help="ProjectToken address; submit_proposal.py scans ProjectRegistry.tokenOf(...) to resolve project id.",
+    )
     p.add_argument("--code-hash", type=str, help="bytes32 hex for repo/code snapshot")
     p.add_argument("--code-file", type=Path, help="File to SHA-256 as codeHash (overrides --code-hash)")
     p.add_argument("--benchmark-log-hash", type=str)
@@ -118,13 +152,29 @@ def main() -> int:
         type=int,
         default=int(os.environ.get("ARAH_METRIC_SCALE", "1000000")),
     )
-    p.add_argument("--stake", type=str, required=True, help="Stake amount in wei (uint256)")
+    p.add_argument(
+        "--stake",
+        type=str,
+        default=env_or_default_stake(),
+        help="Stake amount in wei (uint256); defaults to ARAH_STAKE_WEI or 1e18.",
+    )
     p.add_argument("--reward-recipient", type=str, required=True, help="address")
     p.add_argument(
         "--buy-value-wei",
         type=str,
         default="0",
-        help="Optional ETH (wei) to send with ProjectToken.buy() if balance < stake",
+        help="ETH (wei) to send with ProjectToken.buy() if balance < stake; auto-filled when --auto-buy is set.",
+    )
+    p.add_argument(
+        "--auto-buy",
+        action="store_true",
+        help="If token balance < stake, quote the missing stake with costBetween(...) and call buy() automatically.",
+    )
+    p.add_argument(
+        "--buy-slippage-bps",
+        type=int,
+        default=100,
+        help="Extra wei margin for --auto-buy quote, in basis points (default: 100 = 1%).",
     )
     p.add_argument("--skip-buy", action="store_true", help="Do not call buy() even if balance is low")
     p.add_argument(
@@ -140,6 +190,10 @@ def main() -> int:
     args = p.parse_args()
 
     key = os.environ.get("ARAH_PRIVATE_KEY")
+    if args.project_id is None and not args.token_address:
+        p.error("provide --project-id or --token-address")
+    if args.buy_slippage_bps < 0:
+        p.error("--buy-slippage-bps must be >= 0")
 
     if args.code_file:
         code_hash = hash_file_bytes32(args.code_file.resolve())
@@ -163,19 +217,21 @@ def main() -> int:
         p.error("provide --claimed-score-int256 or --claimed-metric")
 
     stake = parse_uint256(args.stake)
-    reward = Web3.to_checksum_address(args.reward_recipient)
     buy_wei = parse_uint256(args.buy_value_wei)
 
     if args.print_only:
+        if args.project_id is None:
+            p.error("--print-only with --token-address cannot resolve project id without RPC; provide --project-id")
         print(
             json.dumps(
                 {
                     "projectId": args.project_id,
+                    "tokenAddress": args.token_address,
                     "codeHash": code_hash,
                     "benchmarkLogHash": bench_hash,
                     "claimedAggregateScore": str(claimed),
                     "stake": str(stake),
-                    "rewardRecipient": reward,
+                    "rewardRecipient": args.reward_recipient,
                     "buyValueWei": str(buy_wei),
                 },
                 indent=2,
@@ -184,18 +240,24 @@ def main() -> int:
         return 0
 
     if not key:
-        print("ARAH_PRIVATE_KEY is required (or use --print-only)", file=sys.stderr)
+        print(missing_private_key_message() + " Use --print-only for local hash/metric checks.", file=sys.stderr)
         return 1
 
-    account = Account.from_key(key)
-    owner = account.address
+    try:
+        Account, Web3 = load_chain_deps()
+        account = Account.from_key(key)
+        owner = account.address
+        reward = Web3.to_checksum_address(args.reward_recipient)
 
-    deployment, deployment_path = load_deployment()
-    dep_dir = deployment_path.parent
-    rpc = chain_rpc_url(deployment)
-    cid = chain_id(deployment)
-    registry_addr = project_registry_address(deployment)
-    ledger_addr = proposal_ledger_address(deployment)
+        deployment, deployment_path = load_deployment()
+        dep_dir = deployment_path.parent
+        rpc = chain_rpc_url(deployment)
+        cid = chain_id(deployment)
+        registry_addr = project_registry_address(deployment)
+        ledger_addr = proposal_ledger_address(deployment)
+    except (OSError, ValueError) as e:
+        print(str(e), file=sys.stderr)
+        return 1
 
     w3 = Web3(Web3.HTTPProvider(rpc))
     if not w3.is_connected():
@@ -209,15 +271,26 @@ def main() -> int:
     registry = w3.eth.contract(address=Web3.to_checksum_address(registry_addr), abi=reg_abi)
     ledger = w3.eth.contract(address=Web3.to_checksum_address(ledger_addr), abi=ledger_abi)
 
-    token_addr = registry.functions.tokenOf(args.project_id).call()
+    try:
+        resolved_project_id = resolve_project_id(registry, w3, args.project_id, args.token_address)
+    except ValueError as e:
+        print(str(e), file=sys.stderr)
+        return 1
+
+    token_addr = registry.functions.tokenOf(resolved_project_id).call()
     token = w3.eth.contract(address=Web3.to_checksum_address(token_addr), abi=token_abi)
 
     nonce = w3.eth.get_transaction_count(owner)
     balance = token.functions.balanceOf(owner).call()
     if balance < stake and not args.skip_buy:
+        if args.auto_buy:
+            total_supply = int(token.functions.totalSupply().call())
+            missing = stake - balance
+            quoted = int(token.functions.costBetween(total_supply, total_supply + missing).call())
+            buy_wei = quoted + (quoted * args.buy_slippage_bps // 10_000)
         if buy_wei <= 0:
             print(
-                f"token balance {balance} < stake {stake}; pass --buy-value-wei or --skip-buy",
+                f"token balance {balance} < stake {stake}; pass --auto-buy, --buy-value-wei, or --skip-buy",
                 file=sys.stderr,
             )
             return 1
@@ -245,7 +318,7 @@ def main() -> int:
     send_or_dump(w3, account, approve_tx, args.dry_run)
     nonce = nonce + 1 if args.dry_run else w3.eth.get_transaction_count(owner)
     submit_tx = ledger.functions.submit(
-        args.project_id,
+        resolved_project_id,
         Web3.to_bytes(hexstr=code_hash),
         Web3.to_bytes(hexstr=bench_hash),
         claimed,

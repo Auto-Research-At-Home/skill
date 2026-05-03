@@ -14,6 +14,7 @@ Run **unattended** mining against a finalized `protocol.json` and a **git checko
 - `protocol.json` with `schemaKind: protocol` and `meta.eligibility: eligible`.
 - `jq`, `git`, `bash`, `python3` on PATH.
 - Target repo checkout (or run `bootstrap_repo.sh` to clone from `meta.repo.cloneUrl`).
+- For on-chain mining, an EVM wallet in **`ARAH_PRIVATE_KEY`** before the loop starts. Scripts load `.env` from the current working directory; if the key is missing, ask the user to create `.env` with `ARAH_PRIVATE_KEY=0x...` and optional `ARAH_STAKE_WEI=1000000000000000000`. Run **`check_wallet.py`** first so the miner can sign transactions, has native gas, and either has enough ProjectToken stake or enough native balance to buy the missing stake automatically.
 
 ## Unattended mode
 
@@ -42,8 +43,9 @@ Run **unattended** mining against a finalized `protocol.json` and a **git checko
 | `ARAH_CHAIN_ID` | Override chain id (default **16602**). |
 | `ARAH_PROJECT_REGISTRY` / `ARAH_PROPOSAL_LEDGER` | Override contract addresses. |
 | `ARAH_METRIC_SCALE` | Integer scale for int256 ↔ float (match `createProject`; default **1000000**). |
-| `ARAH_PRIVATE_KEY` | Miner key for **`submit_proposal.py`** (hex, no `0x` prefix accepted by eth-account either way). |
+| `ARAH_PRIVATE_KEY` | Miner EVM key for **`check_wallet.py`** and **`submit_proposal.py`** (hex, no `0x` prefix accepted by eth-account either way). May be set in the shell or in `.env` in the current working directory. |
 | `ARAH_PROJECT_ID` | On-chain **project id** for frontier sync; overrides **`miningLoop.onChainProjectId`** in `protocol.json` when set. |
+| `ARAH_STAKE_WEI` | Optional stake amount. Defaults to **`1000000000000000000`** ProjectToken base units when absent. |
 
 Install Python chain deps once: **`pip install -r requirements-chain.txt`** (e.g. in a venv).
 
@@ -91,7 +93,10 @@ Optional **AXL sidechat** writes miner-to-miner field notes to **`sidechat.jsonl
 | `scripts/bootstrap_repo.sh` | Clone or reuse repo from protocol `meta.repo`. |
 | `scripts/bootstrap_from_registry.py` | Resolve by **`--project-id`** or **`--token-address`**, read `ProjectRegistry`, optionally download 0G artifacts, unpack the repo snapshot, initialize mining workspace, and write registry frontier state. |
 | `scripts/download_0g_artifacts.mjs` | Download protocol/repo/benchmark/baseline artifacts from 0G Storage root hashes and verify Merkle roots with the 0G SDK. |
+| `scripts/env_utils.py` | Load `.env` from the current working directory and provide the default stake. |
+| `scripts/check_wallet.py` | Preflight **`ARAH_PRIVATE_KEY`**, RPC, native gas balance, ProjectToken balance, allowance, and missing-stake buy quote. |
 | `scripts/run_trial.sh` | One harness run → `run_baseline.sh`, log under `runs/<trial_id>/stdout.log`. |
+| `scripts/submit_trial_proposal.py` | Archive committed trial code, pair it with the trial benchmark log, and send the on-chain proposal transaction automatically. |
 | `scripts/append_trial_record.py` | Append one validated JSON line to `trials.jsonl`. |
 | `scripts/axl_sidechat_send.py` | Optional AXL `/send` bridge: broadcast the latest trial row as a miner experience message. |
 | `scripts/axl_sidechat_poll.py` | Optional AXL `/recv` bridge: drain inbound sidechat into `.autoresearch/mine/sidechat.jsonl`. |
@@ -116,7 +121,23 @@ Optional **AXL sidechat** writes miner-to-miner field notes to **`sidechat.jsonl
 
 Run scripts from **`autoresearch-mine/scripts/`** (or invoke via absolute paths after skill install).
 
-### 1. Bootstrap workspace
+### 1. Wallet preflight for on-chain mining
+
+When the user provides a project token address or 0G project id, start by checking the wallet. The same wallet signs **`buy()`**, **`approve()`**, and **`submit()`** later.
+
+```bash
+# .env in the current working directory:
+# ARAH_PRIVATE_KEY=0x...
+# ARAH_STAKE_WEI=1000000000000000000
+
+python3 ./check_wallet.py \
+  --token-address 0xProjectTokenAddress
+# or: --project-id "${ARAH_PROJECT_ID:?}"
+```
+
+If `ready` is false, stop and report the missing gas/token/stake condition before spending compute on trials. If `missingStake` is nonzero and `canAutoBuyMissingStake` is true, continue and submit later with **`--auto-buy`**. A low allowance is reported as `needsApproval`; it is not fatal because **`submit_proposal.py`** sends `approve()` itself.
+
+### 2. Bootstrap workspace
 
 **From project token address or project id** (preferred when the project was published with 0G Storage artifacts):
 
@@ -147,7 +168,7 @@ export GIT_TERMINAL_PROMPT=0
 ./init_mine_workspace.sh /path/to/repo
 ```
 
-### 2. Frontier (manual or chain)
+### 3. Frontier (manual or chain)
 
 **Manual:** edit `.autoresearch/mine/network_state.json` from `templates/network_state.manual.json`.
 
@@ -162,20 +183,20 @@ python3 ./sync_registry_frontier.py \
 ./validate_network_state.sh /path/to/protocol.json /path/to/repo
 ```
 
-### 3. Validate frontier file
+### 4. Validate frontier file
 
 ```bash
 ./validate_network_state.sh /path/to/protocol.json /path/to/repo
 ```
 
-### 4. Preview metrics / mining limits
+### 5. Preview metrics / mining limits
 
 ```bash
 ./preview_mining_context.sh /path/to/protocol.json
 python3 ./read_mining_limits.py /path/to/protocol.json
 ```
 
-### 5. Mining loop (agent-driven)
+### 6. Mining loop (agent-driven)
 
 Follow **`prompts/mining_loop.md`**, **`prompts/git_policy.md`**, **`prompts/results_logging.md`**. For each trial:
 
@@ -188,25 +209,25 @@ Follow **`prompts/mining_loop.md`**, **`prompts/git_policy.md`**, **`prompts/res
 
 On improvement vs local best: **`commit_improvement.sh`**. Else: **`revert_mutable_surface.sh`**.
 
-### 6. Optional on-chain submit
+If the trial beats the freshly synced **on-chain** best, do not wait for manual approval. After committing the improvement, call **`submit_trial_proposal.py`** immediately. It creates `.autoresearch/mine/submissions/<trial_id>/repo-snapshot.tar`, uses `.autoresearch/mine/runs/<trial_id>/stdout.log` as `benchmarkLog`, and sends the proposal transaction through **`submit_proposal.py`**.
 
-After a winning trial, optionally publish a proposal (wallet + stake). See **[`references/onchain-mining-0g.md`](references/onchain-mining-0g.md)** for **`bytes32`** hashing (SHA-256 of file bytes) and metric scale.
+### 7. Automatic on-chain submit after beating registry best
+
+After any trial beats the current registry best, publish a proposal with the same wallet. See **[`references/onchain-mining-0g.md`](references/onchain-mining-0g.md)** for **`bytes32`** hashing (SHA-256 of file bytes) and metric scale. If the token balance is below the stake and wallet preflight reported `canAutoBuyMissingStake: true`, keep **`--auto-buy`** enabled so the script buys the missing ProjectToken stake, approves the ledger, then submits.
 
 ```bash
-export ARAH_PRIVATE_KEY=...
-python3 ./submit_proposal.py \
-  --project-id "${ARAH_PROJECT_ID}" \
-  --code-file /path/to/repo-snapshot.tar \
-  --benchmark-log-file /path/to/benchmark.log \
+python3 ./submit_trial_proposal.py \
+  --token-address 0xProjectTokenAddress \
+  --repo-root /path/to/repo \
+  --trial-id <trial_id> \
   --claimed-metric 1.23 \
-  --stake 1000000000000000000 \
   --reward-recipient 0xYourAddress \
-  --buy-value-wei 0
+  --auto-buy
 ```
 
 Use **`--print-only`** to dump resolved args without RPC; **`--dry-run`** to print unsigned txs without sending.
 
-### 7. Optional PR
+### 8. Optional PR
 
 ```bash
 ./prepare_pr_branch.sh /path/to/protocol.json /path/to/repo <trial_id>
@@ -251,7 +272,10 @@ Use sidechat only for side conversation: experiment hints, failed-hypothesis mem
 | `bootstrap_repo.sh` | 0; 1 bad protocol; 2 git / path conflict. |
 | `bootstrap_from_registry.py` | 0 bootstrapped; 1 args / RPC / token not found / download / unpack failure. |
 | `download_0g_artifacts.mjs` | 0 downloaded; 1 args / missing deps / download / root verification failure. |
+| `env_utils.py` | Helper module; no direct CLI. |
+| `check_wallet.py` | 0 wallet can proceed; 1 missing key / RPC / gas / unresolved token / insufficient stake and auto-buy funds. |
 | `run_trial.sh` | Same as `run_baseline.sh`; **3** if harness dir missing. |
+| `submit_trial_proposal.py` | 0 submitted; 1 args / dirty repo / missing trial log / submit failure. |
 | `append_trial_record.py` | 0; 1 validation; 2 IO. |
 | `axl_sidechat_send.py` | 0 sent / disabled / no peers; 1 invalid input or every configured peer failed. |
 | `axl_sidechat_poll.py` | 0 drained queue; 1 bad args / AXL receive failure / write failure. |

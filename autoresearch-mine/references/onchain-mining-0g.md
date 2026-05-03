@@ -15,10 +15,13 @@ This file distills the **miner submit path** from [`autoresearch-create/referenc
 
 ## Miner transaction order
 
-1. **`ProjectRegistry.tokenOf(projectId)`** → project token address.
-2. **`ProjectToken.buy()`** if the wallet needs more tokens for stake (bonding-curve buy).
-3. **`ProjectToken.approve(ProposalLedger_address, stake)`** so the ledger can pull stake.
-4. **`ProposalLedger.submit(projectId, codeHash, benchmarkLogHash, claimedAggregateScore, stake, rewardRecipient)`** → `proposalId`.
+0. **Wallet preflight:** `ARAH_PRIVATE_KEY` must derive the miner EVM address that will pay gas, buy missing stake, approve the ledger, and submit. Scripts load `.env` from the current working directory, so if the key is missing ask the user to create `.env` with `ARAH_PRIVATE_KEY=0x...` and optional `ARAH_STAKE_WEI=1000000000000000000`. Run **`scripts/check_wallet.py`** with `--project-id` or `--token-address` before starting the mining loop.
+1. **`ProjectRegistry.tokenOf(projectId)`** → project token address. If the miner only has a token address, scan `tokenOf(0..nextProjectId-1)` to recover `projectId`.
+2. **`ProjectToken.balanceOf(wallet)`** and **`allowance(wallet, ProposalLedger)`** → check stake readiness.
+3. **`ProjectToken.costBetween(totalSupply, totalSupply + missingStake)`** → quote the native value needed to buy missing stake.
+4. **`ProjectToken.buy()`** if the wallet needs more tokens for stake (bonding-curve buy).
+5. **`ProjectToken.approve(ProposalLedger_address, stake)`** so the ledger can pull stake.
+6. **`ProposalLedger.submit(projectId, codeHash, benchmarkLogHash, claimedAggregateScore, stake, rewardRecipient)`** → `proposalId`.
 
 `rewardRecipient` is explicit and may differ from `msg.sender`.
 
@@ -42,6 +45,14 @@ python3 scripts/bootstrap_from_registry.py \
 This downloads `protocol.json`, `repo-snapshot.tar`, `benchmark.tar`, and `baseline-metrics.log`, verifies each 0G Merkle root, unpacks the repo snapshot, initializes `.autoresearch/mine`, and writes registry frontier state.
 
 If the project was published with plain SHA-256 file hashes, the registry proves integrity but does not provide retrievable storage roots. In that case, supply the local protocol and repo checkout to `bootstrap_from_registry.py` without `--download-artifacts`.
+
+## Automatic buy / approve / submit
+
+`scripts/submit_proposal.py` accepts either **`--project-id`** or **`--token-address`**. With **`--auto-buy`**, it resolves the ProjectToken, checks the wallet token balance, quotes any missing stake with `costBetween`, sends `buy()` with the quoted value plus slippage margin, then sends `approve()` and `submit()`.
+
+Use `--dry-run` to print unsigned transactions after RPC resolution, or `--print-only` to verify local hashes and metric scaling without RPC (requires `--project-id`).
+
+For normal mining, agents should call **`scripts/submit_trial_proposal.py`** instead of assembling hashes by hand. It archives the committed winning repo state from `HEAD`, uses `.autoresearch/mine/runs/<trial_id>/stdout.log` as the benchmark log, and then calls `submit_proposal.py`. The trigger is automatic: if a completed trial beats the freshly synced `ProjectRegistry.currentBestAggregateScore(projectId)`, submit the proposal transaction immediately.
 
 ## Out of scope here
 
