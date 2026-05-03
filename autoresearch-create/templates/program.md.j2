@@ -144,6 +144,9 @@ Limits for unattended **`autoresearch-mine`** sessions. Per-trial time limits ar
 {% if miningLoop.stopAfterSuccessfulPr is defined %}
 - **Stop after successful PR:** {{ 'yes' if miningLoop.stopAfterSuccessfulPr else 'no' }}
 {% endif %}
+{% if miningLoop.onChainProjectId is defined %}
+- **On-chain project id (0G Galileo):** {{ miningLoop.onChainProjectId }} — use with `autoresearch-mine` `sync_registry_frontier.py`; env `ARAH_PROJECT_ID` overrides.
+{% endif %}
 
 {% endif %}
 

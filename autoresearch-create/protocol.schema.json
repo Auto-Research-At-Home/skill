@@ -225,6 +225,11 @@
         "stopAfterSuccessfulPr": {
           "type": "boolean",
           "description": "If true, stop the outer loop after a successful gh PR (exit 0)."
+        },
+        "onChainProjectId": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "0G Galileo ProjectRegistry project id (autoresearch-mine: sync_registry_frontier.py). Env ARAH_PROJECT_ID overrides when set."
         }
       }
     },
