@@ -99,13 +99,16 @@ npx skills add Auto-Research-At-Home/skill
 
 # Or install only the project creation skill
 npx skills add Auto-Research-At-Home/skill --skill autoresearch-create
+
+# Or install only the mining skill (Phase 2 — trials against a finalized protocol)
+npx skills add Auto-Research-At-Home/skill --skill autoresearch-mine
 ```
 
 The skills are portable Agent Skills: each capability is a directory with a `SKILL.md` file plus any supporting resources. The `skills` CLI installs them into supported hosts such as Claude Code, Cursor, and Codex.
 
-The first shipped skill is **`autoresearch-create`**, which helps researchers start a project from an existing GitHub repository, produce a versioned experiment-loop `protocol.json` plus `program.md`, run a baseline, then ask whether to publish the eligible project on-chain. Future sibling skills will cover mining, validation, and status flows.
+**Shipped today:** **`autoresearch-create`** helps researchers start from an existing GitHub repository, produce a versioned `protocol.json` plus `program.md`, run a baseline, then optionally publish an eligible project on-chain. **`autoresearch-mine`** runs the unattended mining loop on a finalized protocol and target checkout: bundled trial harness, `trials.jsonl`, optional GitHub PRs, and optional 0G **`ProjectRegistry`** frontier reads plus **`ProposalLedger.submit`** using contracts vendored under [`autoresearch-mine/contracts/`](autoresearch-mine/contracts/) (miners do not need `autoresearch-create` installed at runtime). Planned sibling skills cover status dashboards and validator-operator flows.
 
-Skills handle the conversational, LLM-assisted workflow. Deterministic or long-running protocol actions — sandbox execution, wallet operations, validator services, and unattended mining — can later be backed by scripts or a CLI invoked by the skill when needed.
+Skills handle the conversational, LLM-assisted workflow. Deterministic pieces already live in each skill’s scripts (baseline runs, mining loop helpers, on-chain sync/submit). Autonomous validator infrastructure and network-wide status surfaces are still future work.
 
 ---
 
@@ -200,6 +203,8 @@ The create skill bundles the deployed ABI artifacts and manifest under `autorese
 | `ProposalLedger` | `0x701db5f8Ed847651209A438695dfe5520adD6A5A` |
 | `VerifierRegistry` | `0x257974E406f206BfAEd3abB8D93C232e3226f032` |
 
+**Miners** use the same addresses from a **vendored copy** under [`autoresearch-mine/contracts/0g-galileo-testnet/`](autoresearch-mine/contracts/0g-galileo-testnet/) (kept in sync with the create skill; no dependency on the create package at runtime).
+
 Publishing an approved project calls:
 
 ```text
@@ -250,7 +255,7 @@ Git history is preserved as an ordered chain of IPFS CIDs, each pointing to a di
 
 ### Layer 5 — The Mining Loop (Karpathy-Inspired AutoResearch)
 
-This is the engine. When a miner picks a project, the skill bootstraps a local AutoResearch loop.
+This is the engine. When a miner picks a project, the **`autoresearch-mine`** skill bootstraps a local AutoResearch loop against the published protocol and repo checkout (see [`autoresearch-mine/SKILL.md`](autoresearch-mine/SKILL.md)).
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -338,7 +343,7 @@ zkML (zero-knowledge proofs for ML) remains the long-term ideal for fully trustl
 | **Sandbox Runner** | Executes the repo + benchmark in an isolated container to produce a verified, deterministic baseline score | Docker / Firecracker |
 | **Token Contract** | Bonding curve token per project with miner rewards pool | Solidity / EVM |
 | **Protocol Registry** | On-chain index of projects, current best scores, and project token addresses | Solidity + IPFS |
-| **AutoResearch Loop** | Local agent loop that iterates on code and keeps only improvements | Python + AI coding agent |
+| **AutoResearch Loop** | Local agent loop that iterates on code and keeps only improvements (`autoresearch-mine` + bundled harness) | Python + AI coding agent |
 | **Proposal Submission** | Packages improved code, benchmark claim, stake, and reward recipient into a transaction | CLI + smart contract |
 | **TEE Validators** | Re-run benchmarks in secure hardware and attest results on-chain | Intel TDX / AMD SEV |
 | **zkML Path** (future) | Cryptographic proof of benchmark execution without trusted hardware | EZKL / zkLLM |
@@ -381,7 +386,9 @@ Miner stakes tokens → submits proposal                            │
 
 ---
 
-## Quick Start (Current Skill)
+## Quick Start (Skills in This Repo)
+
+### Create (Phase 1 — researchers)
 
 ```bash
 # Install this repository's skills into supported agents
@@ -398,16 +405,24 @@ npx skills add Auto-Research-At-Home/skill --skill autoresearch-create
 # then ask whether to publish to the configured 0G Galileo registry.
 ```
 
-The current repository ships only `autoresearch-create`. Mining, status, and validation skills are planned sibling skills:
+The create skill includes discovery prompts, schema, questionnaire, baseline runner, `program.md` renderer, wallet publish flow, and 0G Galileo deployment artifacts under **`autoresearch-create/`**.
 
-```text
-autoresearch-create/
-autoresearch-mine/       # future
-autoresearch-status/     # future
-autoresearch-validate/   # future
+### Mine (Phase 2 — contributors)
+
+Use **`autoresearch-mine`** with a finalized **`protocol.json`** and a checkout of **`meta.repo`**. The skill bundles the same baseline harness pattern as create (`vendor/harness/`), maintains **`.autoresearch/mine/`** (`trials.jsonl`, `network_state.json`), and can optionally read the on-chain best score (`sync_registry_frontier.py`) or submit a proposal (`submit_proposal.py`) using the vendored contract bundle. Install Python chain dependencies only if you use those scripts: **`pip install -r autoresearch-mine/requirements-chain.txt`** (prefer a venv). Environment variables and defaults are documented in [`autoresearch-mine/README.md`](autoresearch-mine/README.md) and [`autoresearch-mine/SKILL.md`](autoresearch-mine/SKILL.md).
+
+```bash
+npx skills add Auto-Research-At-Home/skill --skill autoresearch-mine
 ```
 
-The create skill now includes its discovery prompts, schema, questionnaire, baseline runner, `program.md` renderer, localhost browser wallet publish CLI, and 0G Galileo deployment artifacts under `autoresearch-create/`.
+### Repository layout
+
+```text
+autoresearch-create/     # Phase 1 — protocol authoring, baseline, publish
+autoresearch-mine/        # Phase 2 — mining loop, optional 0G frontier + submit
+autoresearch-status/      # planned
+autoresearch-validate/    # planned
+```
 
 ---
 
