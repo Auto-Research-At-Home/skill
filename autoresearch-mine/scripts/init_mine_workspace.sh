@@ -17,6 +17,7 @@ TEMPLATE="$SCRIPT_DIR/../templates/network_state.manual.json"
 
 mkdir -p "$MINE_DIR/runs" || exit 2
 touch "$MINE_DIR/trials.jsonl" || exit 2
+touch "$MINE_DIR/sidechat.jsonl" || exit 2
 
 if [[ ! -f "$MINE_DIR/network_state.json" ]]; then
   if [[ ! -f "$TEMPLATE" ]]; then

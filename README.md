@@ -52,7 +52,7 @@ AutoResearch At Home is not specific to ML. Any domain where a benchmark can obj
 │  5. Researcher reviews protocol + baseline, approves or refines       │
 │  6. ProjectRegistry creates a project token and publishes the project │
 └────────────────────────┬─────────────────────────────────────────────┘
-                         │ Published to IPFS + on-chain registry
+                         │ Published to 0G Storage + on-chain registry
                          ▼
 ┌──────────────────────────────────────────────────────────────────────┐
 │                        PROTOCOL REGISTRY                              │
@@ -109,7 +109,7 @@ npx skills add Auto-Research-At-Home/skill --skill autoresearch-validate
 
 The skills are portable Agent Skills: each capability is a directory with a `SKILL.md` file plus any supporting resources. The `skills` CLI installs them into supported hosts such as Claude Code, Cursor, and Codex.
 
-**Shipped today:** **`autoresearch-create`** helps researchers start from an existing GitHub repository, produce a versioned `protocol.json` plus `program.md`, run a baseline, then optionally publish an eligible project on-chain. **`autoresearch-mine`** runs the unattended mining loop on a finalized protocol and target checkout: bundled trial harness, `trials.jsonl`, optional GitHub PRs, and optional 0G **`ProjectRegistry`** frontier reads plus **`ProposalLedger.submit`** using contracts vendored under [`autoresearch-mine/contracts/`](autoresearch-mine/contracts/) (miners do not need `autoresearch-create` installed at runtime). **`autoresearch-validate`** runs unattended verifier workflows against **`ProposalLedger`**: resolve miner artifacts by hash via a mandatory artifact index, rerun the bundled harness, apply deterministic static gates, then **`approve`** / **`reject`** using contracts vendored under [`autoresearch-validate/contracts/`](autoresearch-validate/contracts/). A planned sibling skill covers status dashboards.
+**Shipped today:** **`autoresearch-create`** helps researchers start from an existing GitHub repository, produce a versioned `protocol.json` plus `program.md`, run a baseline, then optionally publish an eligible project on-chain. **`autoresearch-mine`** runs the unattended mining loop on a finalized protocol and target checkout: bundled trial harness, `trials.jsonl`, optional GitHub PRs, optional AXL sidechat, and optional 0G **`ProjectRegistry`** frontier reads plus **`ProposalLedger.submit`** using contracts vendored under [`autoresearch-mine/contracts/`](autoresearch-mine/contracts/) (miners do not need `autoresearch-create` installed at runtime). **`autoresearch-validate`** runs unattended verifier workflows against **`ProposalLedger`**: resolve miner artifacts by hash via a mandatory artifact index, rerun the bundled harness, apply deterministic static gates, then **`approve`** / **`reject`** using contracts vendored under [`autoresearch-validate/contracts/`](autoresearch-validate/contracts/). A planned sibling skill covers status dashboards.
 
 Skills handle the conversational, LLM-assisted workflow where applicable; validate scripts are fully deterministic for settlement paths.
 
@@ -291,6 +291,8 @@ This is the engine. When a miner picks a project, the **`autoresearch-mine`** sk
 
 **The competitive mechanic:** The network publishes the current best score in real time. Miners are racing each other — submitting before your score advantage disappears is part of the strategy. If someone else submits a better result while you are still iterating, your submission will only be accepted if it still beats the new best.
 
+**AXL sidechat:** Miners can optionally broadcast compact experiment notes over Gensyn AXL. These messages are written to `.autoresearch/mine/sidechat.jsonl` as advisory context for future hypotheses; they are not current-best state, proposal evidence, or verifier evidence.
+
 **Miner incentive design:** Miners choose projects where:
 - Token value × expected reward > cost of compute to find improvement
 - The current benchmark gap is large enough to make improvement tractable
@@ -312,8 +314,8 @@ Miners are untrusted. They could fabricate benchmark results. The validator netw
 │  ┌───────────────────────────────────────────────────────────────┐  │
 │  │  [Inside secure enclave — no external code can tamper]        │  │
 │  │                                                                │  │
-│  │  1. Pull code from IPFS (verified by CID hash)                │  │
-│  │  2. Pull benchmark suite from IPFS (verified by CID hash)     │  │
+│  │  1. Pull code from 0G Storage (verified by root hash)         │  │
+│  │  2. Pull benchmark suite from 0G Storage (verified by root)   │  │
 │  │  3. Run benchmark in isolated environment                      │  │
 │  │  4. Record result                                              │  │
 │  │  5. Sign result with enclave's hardware-derived key           │  │
@@ -345,8 +347,9 @@ zkML (zero-knowledge proofs for ML) remains the long-term ideal for fully trustl
 | **Protocol Generator** | Reads an existing GitHub repo, derives the research spec, and proposes a benchmark contract | Host coding agent LLM + skill resources |
 | **Sandbox Runner** | Executes the repo + benchmark in an isolated container to produce a verified, deterministic baseline score | Docker / Firecracker |
 | **Token Contract** | Bonding curve token per project with miner rewards pool | Solidity / EVM |
-| **Protocol Registry** | On-chain index of projects, current best scores, and project token addresses | Solidity + IPFS |
+| **Protocol Registry** | On-chain index of projects, current best scores, and project token addresses | Solidity + 0G Storage |
 | **AutoResearch Loop** | Local agent loop that iterates on code and keeps only improvements (`autoresearch-mine` + bundled harness) | Python + AI coding agent |
+| **AXL Sidechat** | Optional miner-to-miner side conversation for experiment notes and warnings | Gensyn AXL raw HTTP |
 | **Proposal Submission** | Packages improved code, benchmark claim, stake, and reward recipient into a transaction | CLI + smart contract |
 | **TEE Validators** | Re-run benchmarks in secure hardware and attest results on-chain | Intel TDX / AMD SEV |
 | **zkML Path** (future) | Cryptographic proof of benchmark execution without trusted hardware | EZKL / zkLLM |
@@ -412,7 +415,7 @@ The create skill includes discovery prompts, schema, questionnaire, baseline run
 
 ### Mine (Phase 2 — contributors)
 
-Use **`autoresearch-mine`** with a finalized **`protocol.json`** and a checkout of **`meta.repo`**. The skill bundles the same baseline harness pattern as create (`vendor/harness/`), maintains **`.autoresearch/mine/`** (`trials.jsonl`, `network_state.json`), and can optionally read the on-chain best score (`sync_registry_frontier.py`) or submit a proposal (`submit_proposal.py`) using the vendored contract bundle. Install Python chain dependencies only if you use those scripts: **`pip install -r autoresearch-mine/requirements-chain.txt`** (prefer a venv). Environment variables and defaults are documented in [`autoresearch-mine/README.md`](autoresearch-mine/README.md) and [`autoresearch-mine/SKILL.md`](autoresearch-mine/SKILL.md).
+Use **`autoresearch-mine`** with a finalized **`protocol.json`** and a checkout of **`meta.repo`**. The skill bundles the same baseline harness pattern as create (`vendor/harness/`), maintains **`.autoresearch/mine/`** (`trials.jsonl`, `network_state.json`, `sidechat.jsonl`), and can optionally read the on-chain best score (`sync_registry_frontier.py`), exchange AXL sidechat notes, or submit a proposal (`submit_proposal.py`) using the vendored contract bundle. Install Python chain dependencies only if you use those scripts: **`pip install -r autoresearch-mine/requirements-chain.txt`** (prefer a venv). Environment variables and defaults are documented in [`autoresearch-mine/SKILL.md`](autoresearch-mine/SKILL.md).
 
 ```bash
 npx skills add Auto-Research-At-Home/skill --skill autoresearch-mine
@@ -430,7 +433,7 @@ npx skills add Auto-Research-At-Home/skill --skill autoresearch-validate
 
 ```text
 autoresearch-create/      # Phase 1 — protocol authoring, baseline, publish
-autoresearch-mine/        # Phase 2 — mining loop, optional 0G frontier + submit
+autoresearch-mine/        # Phase 2 — mining loop, optional 0G frontier, AXL sidechat + submit
 autoresearch-validate/    # Phase 2 — verifier harness + ProposalLedger approve/reject
 autoresearch-status/      # planned
 ```
