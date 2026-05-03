@@ -51,7 +51,7 @@ The `ProjectCreated(projectId, creator, token, protocolHash)` event gives the ca
 
 Do not pass raw IPFS CIDs or URLs into `bytes32` fields. Store CIDs/URLs off-chain and pass the agreed bytes32 digest that the contract expects.
 
-Use `scripts/publish_project_0g.mjs` for publishing. It renders a WalletConnect/Reown QR code in the terminal, sends `eth_sendTransaction` through the wallet session after user approval, polls the 0G RPC for the receipt, and writes `publish_0g_galileo.json`.
+Use `scripts/publish_project_0g.mjs` for publishing. It opens a temporary localhost browser page, discovers injected EIP-1193 wallets, asks the user to sign a SIWE-style publish approval message, verifies that signature locally, sends `eth_sendTransaction` through the browser wallet after user approval, polls the 0G RPC for the receipt, and writes `publish_0g_galileo.json`.
 
 ## ABI-derived mining and review flow
 

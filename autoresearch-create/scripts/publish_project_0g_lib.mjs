@@ -184,7 +184,7 @@ export function createProjectArgsFromInputs(inputs) {
   ];
 }
 
-export function summarizeCreateProject(inputs, deployment, fromAddress = "(wallet after QR scan)") {
+export function summarizeCreateProject(inputs, deployment, fromAddress = "(browser wallet after approval)") {
   const registry = deployment.contracts.ProjectRegistry.address;
   return {
     network: deployment.network.name,
@@ -255,7 +255,7 @@ export function parseArgs(argv) {
       throw new Error(`unexpected argument: ${raw}`);
     }
     const key = raw.slice(2).replace(/-([a-z])/g, (_m, c) => c.toUpperCase());
-    if (key === "yes" || key === "dryRun" || key === "unsignedTx" || key === "help") {
+    if (key === "yes" || key === "dryRun" || key === "unsignedTx" || key === "help" || key === "noOpen") {
       options[key] = true;
       continue;
     }

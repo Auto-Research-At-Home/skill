@@ -17,7 +17,7 @@ This package lives **alongside** autoresearch-style training repos (for example 
 | [`scripts/build_discovery_bundle.py`](scripts/build_discovery_bundle.py) | Clone or scan a repo; fill discovery prompt placeholders |
 | [`scripts/run_baseline.sh`](scripts/run_baseline.sh) | Run setup + main command from `protocol.json` with OS-aware timeout (Linux `timeout`, macOS `gtimeout`, else Python) |
 | [`scripts/render_program_md.py`](scripts/render_program_md.py) | Render **`program.md`** from `protocol.json` + [`templates/program.md.j2`](templates/program.md.j2) (needs **`pip install jinja2`**) |
-| [`scripts/publish_project_0g.mjs`](scripts/publish_project_0g.mjs) | Publish an eligible baseline-approved project through WalletConnect/Reown QR signing |
+| [`scripts/publish_project_0g.mjs`](scripts/publish_project_0g.mjs) | Publish an eligible baseline-approved project through a localhost browser wallet flow |
 | [`requirements-tools.txt`](requirements-tools.txt) | Optional deps (`jinja2`) for render script |
 | [`workflow.md`](workflow.md) | End-to-end flow diagrams and entry points |
 | [`contracts/0g-galileo-testnet/`](contracts/0g-galileo-testnet/) | Deployment manifest and ABI artifacts for the configured 0G Galileo registry |
@@ -85,7 +85,7 @@ node scripts/publish_project_0g.mjs \
   --dry-run
 ```
 
-To publish, replace `--dry-run` with `--reown-project-id <project-id> --yes`, scan the terminal QR code with a mobile wallet, approve the transaction in the wallet, and let the CLI poll the 0G RPC for the receipt.
+To publish, replace `--dry-run` with `--yes`. The CLI opens a temporary localhost browser page; choose an installed wallet extension, sign the publish approval message, approve the transaction in the wallet, and let the CLI poll the 0G RPC for the receipt. Use `--no-open` when you want the CLI to print the local URL without opening a browser.
 
 ## License
 

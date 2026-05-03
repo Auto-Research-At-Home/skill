@@ -24,7 +24,7 @@ Use the bundled experiment-protocol toolkit in this skill directory. Do not modi
 - `scripts/render_program_md.py` and `templates/program.md.j2`: render `program.md` from finalized `protocol.json`.
 - `scripts/preview_metrics.py`: print a focused benchmark review block from `protocol.json` for the Step 5b approval gate.
 - `scripts/run_baseline.sh`: run setup plus the primary command from `protocol.json` and parse the baseline metric.
-- `scripts/publish_project_0g.mjs`: prepare and publish `ProjectRegistry.createProject(...)` via WalletConnect/Reown QR signing, or write an unsigned transaction/dry-run artifact.
+- `scripts/publish_project_0g.mjs`: prepare and publish `ProjectRegistry.createProject(...)` via a localhost browser wallet flow, or write an unsigned transaction/dry-run artifact.
 - `contracts/0g-galileo-testnet/deployment.json`: deployed 0G Galileo testnet contract addresses and artifact paths.
 - `contracts/0g-galileo-testnet/artifacts/*.json`: ABI/artifact JSON for `ProjectRegistry`, `ProjectToken`, `ProposalLedger`, and `VerifierRegistry`.
 - `references/onchain-0g-galileo.md`: ABI-derived on-chain create, mining, and review flow. Read it only for publish/mining/review work.
@@ -199,7 +199,7 @@ The baseline is complete. Do you want me to publish this project to the 0G Galil
 
 Do not submit a transaction until the user approves publishing and the signing/wallet requirements are satisfied.
 
-The supported signing path is WalletConnect/Reown QR signing. Do not ask the user for a private key or seed phrase, and do not require a local private key environment variable.
+The supported signing path is a temporary localhost browser wallet page. The CLI opens `http://127.0.0.1:<port>/...`, the browser discovers injected wallets with EIP-6963/EIP-1193, the user signs a SIWE-style publish approval message, the CLI verifies that signature locally, and the browser wallet submits `eth_sendTransaction`. Do not ask the user for a private key or seed phrase, and do not require a local private key environment variable.
 
 Read `references/onchain-0g-galileo.md` before preparing any transaction. Use `contracts/0g-galileo-testnet/deployment.json` for the active deployment:
 
@@ -231,7 +231,6 @@ node scripts/publish_project_0g.mjs \
   --base-price <wei> \
   --slope <wei> \
   --miner-pool-cap <token-wei> \
-  --reown-project-id <project-id> \
   --yes
 ```
 
