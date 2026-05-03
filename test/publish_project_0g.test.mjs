@@ -16,6 +16,13 @@ import {
   parseProjectCreated,
   toHexQuantity,
 } from "../autoresearch-create/scripts/publish_project_0g_lib.mjs";
+import {
+  buildApprovalMessage,
+  buildSiweMessage,
+  calldataDigest,
+  startLocalWalletPublish,
+  verifySiweSignature,
+} from "../autoresearch-create/scripts/local_wallet_publish.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DEPLOYMENT = path.join(
@@ -171,10 +178,208 @@ test("parses ProjectCreated from a receipt", async () => {
 });
 
 test("parses CLI flags and quantities", () => {
-  assert.deepEqual(parseArgs(["--yes", "--token-name", "T"]), {
+  assert.deepEqual(parseArgs(["--yes", "--no-open", "--token-name", "T"]), {
     yes: true,
+    noOpen: true,
     tokenName: "T",
   });
   assert.equal(toHexQuantity(16602), "0x40da");
   assert.throws(() => toHexQuantity(-1), /negative/);
 });
+
+test("builds SIWE-style publish approval messages", () => {
+  const message = buildSiweMessage({
+    domain: "127.0.0.1:49152",
+    address: "0x1111111111111111111111111111111111111111",
+    statement: "Approve publishing this project.",
+    uri: "http://127.0.0.1:49152/session/sign",
+    chainId: 16602,
+    nonce: "abc123",
+    issuedAt: "2026-05-03T00:00:00.000Z",
+    expirationTime: "2026-05-03T00:05:00.000Z",
+    resources: ["urn:arah:chain:16602"],
+  });
+
+  assert.match(message, /wants you to sign in with your Ethereum account/);
+  assert.match(message, /Chain ID: 16602/);
+  assert.match(message, /Nonce: abc123/);
+  assert.match(message, /Resources:\n- urn:arah:chain:16602/);
+});
+
+test("verifies SIWE-style signatures against the approving wallet", async () => {
+  const { privateKeyToAccount } = await import("viem/accounts");
+  const account = privateKeyToAccount(
+    "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  );
+  const message = buildSiweMessage({
+    domain: "127.0.0.1:49152",
+    address: account.address,
+    statement: "Approve publishing this project.",
+    uri: "http://127.0.0.1:49152/session/sign",
+    chainId: 16602,
+    nonce: "abc123",
+    issuedAt: "2026-05-03T00:00:00.000Z",
+  });
+  const signature = await account.signMessage({ message });
+
+  assert.equal(await verifySiweSignature({ message, address: account.address, signature }), true);
+  assert.equal(
+    await verifySiweSignature({
+      message,
+      address: "0x1111111111111111111111111111111111111111",
+      signature,
+    }),
+    false,
+  );
+});
+
+test("builds publish approval resources from deployment and transaction", () => {
+  const deployment = loadDeployment(DEPLOYMENT);
+  const summary = {
+    args: {
+      protocolHash: `0x${"ab".repeat(32)}`,
+    },
+  };
+  const txRequest = {
+    to: deployment.contracts.ProjectRegistry.address,
+    data: "0x1234",
+    chainId: "0x40da",
+    value: "0x0",
+  };
+  const message = buildApprovalMessage({
+    address: "0x1111111111111111111111111111111111111111",
+    deployment,
+    nonce: "nonce",
+    issuedAt: "2026-05-03T00:00:00.000Z",
+    expirationTime: "2026-05-03T00:05:00.000Z",
+    txRequest,
+    summary,
+    origin: "http://127.0.0.1:49152",
+    token: "session",
+  });
+
+  assert.match(message, /urn:arah:project-registry:0xc84768e450534974C0DD5BAb7c1b695744124136/);
+  assert.match(message, new RegExp(`urn:arah:create-project-calldata-sha256:${calldataDigest("0x1234").slice(2)}`));
+  assert.match(message, /urn:arah:protocol-hash:abab/);
+});
+
+test("local wallet publish server verifies approval before accepting tx hash", async () => {
+  const { privateKeyToAccount } = await import("viem/accounts");
+  const account = privateKeyToAccount(
+    "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  );
+  const deployment = loadDeployment(DEPLOYMENT);
+  const txRequest = {
+    to: deployment.contracts.ProjectRegistry.address,
+    data: "0x1234",
+    chainId: "0x40da",
+    value: "0x0",
+  };
+  const summary = {
+    network: deployment.network.name,
+    chainId: deployment.network.chainId,
+    args: {
+      protocolHash: `0x${"ab".repeat(32)}`,
+    },
+  };
+  const session = await startLocalWalletPublish({
+    txRequest,
+    deployment,
+    summary,
+    open: false,
+    timeoutMs: 30_000,
+  });
+
+  try {
+    const sessionResponse = await fetch(`${session.url.replace("/sign", "/session")}`);
+    assert.equal(sessionResponse.status, 200);
+    const sessionJson = await sessionResponse.json();
+    assert.equal(sessionJson.chain.chainId, "0x40da");
+    assert.equal(sessionJson.txRequest.to, txRequest.to);
+
+    const txBeforeApproval = await postJson(`${session.url.replace("/sign", "/tx")}`, {
+      address: account.address,
+      signature: "0x1234",
+      message: "wrong",
+      txHash: `0x${"12".repeat(32)}`,
+    });
+    assert.equal(txBeforeApproval.status, 400);
+    assert.match(txBeforeApproval.body.error, /message does not match/);
+
+    const messageResponse = await postJson(`${session.url.replace("/sign", "/message")}`, {
+      address: account.address,
+    });
+    assert.equal(messageResponse.status, 200);
+    const { message } = messageResponse.body;
+    const signature = await account.signMessage({ message });
+
+    const approvalResponse = await postJson(`${session.url.replace("/sign", "/approve")}`, {
+      address: account.address,
+      signature,
+      message,
+    });
+    assert.equal(approvalResponse.status, 200);
+
+    const txHash = `0x${"34".repeat(32)}`;
+    const txResponse = await postJson(`${session.url.replace("/sign", "/tx")}`, {
+      address: account.address,
+      signature,
+      message,
+      txHash,
+    });
+    assert.equal(txResponse.status, 200);
+
+    assert.deepEqual(await session.result, {
+      address: account.address,
+      signature,
+      message,
+      txHash,
+    });
+  } finally {
+    session.close();
+  }
+});
+
+test("local wallet publish server rejects cross-origin posts", async () => {
+  const deployment = loadDeployment(DEPLOYMENT);
+  const session = await startLocalWalletPublish({
+    txRequest: {
+      to: deployment.contracts.ProjectRegistry.address,
+      data: "0x1234",
+      chainId: "0x40da",
+      value: "0x0",
+    },
+    deployment,
+    summary: {},
+    open: false,
+    timeoutMs: 30_000,
+  });
+
+  try {
+    const response = await fetch(`${session.url.replace("/sign", "/message")}`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "http://evil.example",
+      },
+      body: JSON.stringify({
+        address: "0x1111111111111111111111111111111111111111",
+      }),
+    });
+    assert.equal(response.status, 403);
+  } finally {
+    session.close();
+  }
+});
+
+async function postJson(url, body) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return {
+    status: response.status,
+    body: await response.json(),
+  };
+}

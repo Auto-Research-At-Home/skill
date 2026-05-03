@@ -407,7 +407,7 @@ autoresearch-status/     # future
 autoresearch-validate/   # future
 ```
 
-The create skill now includes its discovery prompts, schema, questionnaire, baseline runner, `program.md` renderer, WalletConnect QR publish CLI, and 0G Galileo deployment artifacts under `autoresearch-create/`.
+The create skill now includes its discovery prompts, schema, questionnaire, baseline runner, `program.md` renderer, localhost browser wallet publish CLI, and 0G Galileo deployment artifacts under `autoresearch-create/`.
 
 ---
 
