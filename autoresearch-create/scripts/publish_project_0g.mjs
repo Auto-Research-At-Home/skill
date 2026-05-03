@@ -57,6 +57,9 @@ Notes:
     --benchmark-hash, and --baseline-metrics-hash.
   - Use --upload-artifacts-to-0g to upload protocol/repo/benchmark/baseline files
     to 0G Storage and use their 0G root hashes as the on-chain bytes32 fields.
+    This is required for non-dry-run / non-unsigned-tx publishes; pass
+    --allow-skip-storage if you intentionally want to publish hashes that
+    point to nothing retrievable.
   - 0G Storage uploads use the same localhost browser wallet flow by default.
     Set ZG_STORAGE_PRIVATE_KEY only for an intentionally local unattended
     publisher wallet with 0G testnet gas.
@@ -68,6 +71,18 @@ async function main() {
   if (options.help) {
     usage();
     return 0;
+  }
+
+  const willSubmitOnChain = !(options.dryRun || options.unsignedTx);
+  if (willSubmitOnChain && !options.uploadArtifactsTo0g && !options.allowSkipStorage) {
+    throw new Error(
+      "refusing to create on-chain project without 0G Storage uploads. " +
+        "Pass --upload-artifacts-to-0g so the registry hashes resolve to retrievable artifacts, " +
+        "or pass --allow-skip-storage to publish hashes that point to nothing.",
+    );
+  }
+  if (options.storageOnly && !options.uploadArtifactsTo0g) {
+    throw new Error("--storage-only requires --upload-artifacts-to-0g");
   }
 
   const deploymentPath = path.resolve(options.deployment || DEFAULT_DEPLOYMENT);
@@ -99,6 +114,7 @@ async function main() {
     }
     walletSession = await startLocalWalletPublish({
       deployment,
+      flow: "storage+register",
       open: !options.noOpen,
     });
     console.log("\nOpen this local wallet signing page in a browser with your wallet extension:\n");
@@ -114,6 +130,8 @@ async function main() {
       ? await resolve0gStorageSigner({ options, deployment, walletSession })
       : null;
 
+    walletSession?.setStepStatus("storage", "active");
+
     storageArtifacts = await prepare0gStorageArtifacts({
       artifactPaths,
       blockchainRpc: deployment.network.rpcUrl,
@@ -123,6 +141,22 @@ async function main() {
       taskSize: options.zgStorageTaskSize,
       expectedReplica: options.zgStorageExpectedReplica,
       onProgress: (message) => console.log(`[0G Storage] ${message}`),
+      onState: (event) => {
+        if (!walletSession) return;
+        if (event.type === "artifact-start") {
+          walletSession.setStepItemStatus("storage", event.name, "active");
+        } else if (event.type === "artifact-done") {
+          walletSession.setStepItemStatus(
+            "storage",
+            event.name,
+            "done",
+            event.rootHash ? `root ${event.rootHash.slice(0, 10)}…` : "uploaded",
+          );
+        } else if (event.type === "artifact-error") {
+          walletSession.setStepItemStatus("storage", event.name, "error", event.message || "failed");
+          walletSession.setStepStatus("storage", "error");
+        }
+      },
     });
 
     writeStorageManifest({
@@ -133,15 +167,15 @@ async function main() {
       upload,
     });
     walletSession?.setStorageArtifacts(storageArtifacts);
+    walletSession?.setStepStatus("storage", "done");
     inputOptions = applyStorageRootHashes(options, storageArtifacts);
 
     if (options.storageOnly) {
       console.log("Storage upload complete; skipping registry transaction.");
+      walletSession?.setComplete({ note: "storage-only run complete" });
       walletSession?.close();
       return 0;
     }
-  } else if (options.storageOnly) {
-    throw new Error("--storage-only requires --upload-artifacts-to-0g");
   }
 
   const inputs = buildCreateProjectInputs(inputOptions);
@@ -191,6 +225,7 @@ async function main() {
       deployment,
       summary,
       storageArtifacts,
+      flow: "register-only",
       open: !options.noOpen,
     });
     console.log("\nOpen this local wallet signing page in a browser with your wallet extension:\n");
@@ -198,6 +233,7 @@ async function main() {
   } else {
     walletSession.setPublishRequest({ txRequest, summary });
   }
+  walletSession.setStepStatus("register", "active");
 
   console.log("\nWaiting for browser wallet approval and final project transaction...\n");
 
@@ -256,6 +292,21 @@ async function main() {
   fs.writeFileSync(recordPath, JSON.stringify(publishRecord, null, 2) + "\n");
   console.log(`Publish record written: ${recordPath}`);
   console.log(`Project ${event.projectId} token: ${event.tokenAddr}`);
+  walletSession?.setComplete({
+    txHash,
+    projectId: event.projectId,
+    tokenAddr: event.tokenAddr,
+    buy: {
+      tokenAddress: event.tokenAddr,
+      tokenSymbol: inputs.tokenSymbol,
+      chainIdHex: toHexQuantity(deployment.network.chainId),
+      basePrice: inputs.basePrice.toString(),
+      slope: inputs.slope.toString(),
+      minerPoolCap: inputs.minerPoolCap.toString(),
+      decimals: 18,
+    },
+  });
+  await walletSession?.close({ delayMs: 5000 });
   return 0;
 }
 
