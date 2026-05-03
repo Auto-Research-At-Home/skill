@@ -451,6 +451,82 @@ test("local wallet publish server bridges wallet RPC requests", async () => {
   }
 });
 
+test("local wallet publish server exposes progress and step transitions", async () => {
+  const deployment = loadDeployment(DEPLOYMENT);
+  const session = await startLocalWalletPublish({
+    deployment,
+    flow: "storage+register",
+    open: false,
+    timeoutMs: 30_000,
+  });
+
+  try {
+    const initial = await (await fetch(`${session.url.replace("/sign", "/progress")}`)).json();
+    assert.equal(initial.progress.flow, "storage+register");
+    assert.equal(initial.progress.status, "in-progress");
+    assert.deepEqual(
+      initial.progress.steps.map((step) => step.id),
+      ["connect", "storage", "register"],
+    );
+    const storageStep = initial.progress.steps.find((step) => step.id === "storage");
+    assert.equal(storageStep.items.length, 4);
+
+    const accountResponse = await postJson(`${session.url.replace("/sign", "/account")}`, {
+      address: "0x1111111111111111111111111111111111111111",
+    });
+    assert.equal(accountResponse.status, 200);
+
+    const afterConnect = await (await fetch(`${session.url.replace("/sign", "/progress")}`)).json();
+    const connectStep = afterConnect.progress.steps.find((step) => step.id === "connect");
+    assert.equal(connectStep.status, "done");
+    assert.equal(connectStep.detail, "0x1111111111111111111111111111111111111111");
+    assert.equal(afterConnect.progress.currentStepId, "storage");
+
+    session.setStepStatus("storage", "active");
+    session.setStepItemStatus("storage", "protocol", "active");
+    session.setStepItemStatus("storage", "protocol", "done", "root 0xabcd");
+    const midUpload = await (await fetch(`${session.url.replace("/sign", "/progress")}`)).json();
+    const protocolItem = midUpload.progress.steps
+      .find((step) => step.id === "storage")
+      .items.find((item) => item.id === "protocol");
+    assert.equal(protocolItem.status, "done");
+    assert.equal(protocolItem.detail, "root 0xabcd");
+
+    session.setComplete({ txHash: `0x${"ab".repeat(32)}`, projectId: "42", tokenAddr: "0x2222222222222222222222222222222222222222" });
+    const finalProgress = await (await fetch(`${session.url.replace("/sign", "/progress")}`)).json();
+    assert.equal(finalProgress.progress.status, "complete");
+    assert.equal(finalProgress.progress.completion.projectId, "42");
+    for (const step of finalProgress.progress.steps) {
+      assert.equal(step.status, "done");
+    }
+  } finally {
+    await session.close();
+  }
+});
+
+test("publish refuses on-chain createProject when storage was skipped", () => {
+  const options = parseArgs([
+    "--protocol-json", "/tmp/x.json",
+    "--token-name", "T",
+    "--token-symbol", "T",
+    "--base-price", "1",
+    "--slope", "1",
+    "--miner-pool-cap", "1",
+    "--baseline-aggregate-score", "1",
+    "--yes",
+  ]);
+  assert.equal(options.uploadArtifactsTo0g, undefined);
+  assert.equal(options.allowSkipStorage, undefined);
+  assert.equal(options.dryRun, undefined);
+  assert.equal(options.unsignedTx, undefined);
+});
+
+test("publish parseArgs accepts --allow-skip-storage", () => {
+  const options = parseArgs(["--allow-skip-storage", "--yes"]);
+  assert.equal(options.allowSkipStorage, true);
+  assert.equal(options.yes, true);
+});
+
 test("local wallet publish server rejects cross-origin posts", async () => {
   const deployment = loadDeployment(DEPLOYMENT);
   const session = await startLocalWalletPublish({

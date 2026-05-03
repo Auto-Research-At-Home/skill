@@ -197,6 +197,7 @@ export async function prepare0gStorageArtifacts({
   signer,
   upload,
   onProgress,
+  onState,
   taskSize,
   expectedReplica,
 }) {
@@ -206,11 +207,14 @@ export async function prepare0gStorageArtifacts({
 
   for (const [name, artifact] of Object.entries(artifactPaths)) {
     onProgress?.(`${upload ? "Uploading" : "Preparing"} ${name}: ${artifact.path}`);
+    onState?.({ type: "artifact-start", name });
     const file = await ZgFile.fromFilePath(artifact.path);
     try {
       const [tree, treeErr] = await file.merkleTree();
       if (treeErr !== null || !tree?.rootHash()) {
-        throw new Error(`failed to compute 0G Merkle root for ${name}: ${treeErr}`);
+        const message = `failed to compute 0G Merkle root for ${name}: ${treeErr}`;
+        onState?.({ type: "artifact-error", name, message });
+        throw new Error(message);
       }
 
       const record = {
@@ -237,12 +241,15 @@ export async function prepare0gStorageArtifacts({
           },
         );
         if (uploadErr !== null) {
-          throw new Error(`0G Storage upload failed for ${name}: ${uploadErr.message}`);
+          const message = `0G Storage upload failed for ${name}: ${uploadErr.message}`;
+          onState?.({ type: "artifact-error", name, message });
+          throw new Error(message);
         }
         Object.assign(record, normalizeStorageUploadResult(tx));
       }
 
       artifacts[name] = record;
+      onState?.({ type: "artifact-done", name, rootHash: record.rootHash });
     } finally {
       await file.close();
     }
@@ -405,6 +412,7 @@ export function parseArgs(argv) {
     "noOpen",
     "uploadArtifactsTo0g",
     "storageOnly",
+    "allowSkipStorage",
   ]);
   for (let i = 0; i < argv.length; i += 1) {
     const raw = argv[i];
