@@ -3,6 +3,14 @@
   "version": "0.0.1",
   "description": "Auto Research At Home (ARAH) — agent skills for bootstrapping decentralized research projects from existing GitHub repositories.",
   "license": "MIT",
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@walletconnect/sign-client": "2.21.7",
+    "qrcode-terminal": "^0.12.0",
+    "viem": "^2.38.5"
+  },
   "keywords": [
     "agent-skills",
     "skills.sh",

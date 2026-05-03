@@ -1,0 +1,26 @@
+{
+  "network": {
+    "name": "0G Galileo testnet",
+    "chainId": 16602,
+    "rpcUrl": "https://evmrpc-testnet.0g.ai"
+  },
+  "contracts": {
+    "VerifierRegistry": {
+      "address": "0x257974E406f206BfAEd3abB8D93C232e3226f032",
+      "artifact": "artifacts/VerifierRegistry.json"
+    },
+    "ProposalLedger": {
+      "address": "0x701db5f8Ed847651209A438695dfe5520adD6A5A",
+      "artifact": "artifacts/ProposalLedger.json"
+    },
+    "ProjectRegistry": {
+      "address": "0xc84768e450534974C0DD5BAb7c1b695744124136",
+      "artifact": "artifacts/ProjectRegistry.json"
+    },
+    "ProjectToken": {
+      "address": null,
+      "artifact": "artifacts/ProjectToken.json",
+      "note": "One ProjectToken is deployed by ProjectRegistry.createProject for each project."
+    }
+  }
+}
