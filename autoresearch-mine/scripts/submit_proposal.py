@@ -15,6 +15,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+from bonding_curve import cost_between
 from chain_config import (
     chain_id,
     chain_rpc_url,
@@ -24,6 +25,10 @@ from chain_config import (
     proposal_ledger_address,
 )
 from env_utils import env_or_default_stake, load_dotenv_from_cwd, missing_private_key_message
+
+# Flat native-gas reserve for buy() + approve() + submit() on Galileo.
+# A few hundred k gas total at typical testnet gasPrice fits comfortably here.
+GAS_RESERVE_WEI = 5 * 10**15  # 0.005 OG
 
 
 def hash_file_bytes32(file_path: Path) -> str:
@@ -47,6 +52,42 @@ def parse_uint256(text: str) -> int:
 
 def parse_int256(text: str) -> int:
     return int(text, 0) if text.startswith("0x") else int(text)
+
+
+def parse_budget_wei(text: str) -> int:
+    """Parse a budget string into wei.
+
+    Accepted forms (case-insensitive suffix):
+      "0.05og" / "0.05 OG"  -> 5e16 wei
+      "1000wei"             -> 1000 wei
+      "0x..."               -> hex wei
+      "12345"               -> integer wei
+    """
+    s = text.strip().lower().replace(" ", "")
+    if not s:
+        raise ValueError("empty budget")
+    if s.endswith("og"):
+        amount = s[:-2]
+        if "." in amount:
+            whole, frac = amount.split(".", 1)
+        else:
+            whole, frac = amount, ""
+        whole_int = int(whole) if whole else 0
+        frac = frac[:18].ljust(18, "0")  # OG has 18 decimals
+        return whole_int * 10**18 + int(frac or "0")
+    if s.endswith("wei"):
+        return int(s[:-3])
+    if s.startswith("0x"):
+        return int(s, 16)
+    return int(s)
+
+
+def format_og(wei: int, places: int = 6) -> str:
+    sign = "-" if wei < 0 else ""
+    n = abs(wei)
+    whole, frac = divmod(n, 10**18)
+    frac_str = f"{frac:018d}"[:places].rstrip("0")
+    return f"{sign}{whole}.{frac_str}" if frac_str else f"{sign}{whole}"
 
 
 def decimal_metric_to_scaled_int(metric_text: str, scale: int) -> int:
@@ -156,19 +197,31 @@ def main() -> int:
         "--stake",
         type=str,
         default=env_or_default_stake(),
-        help="Stake amount in wei (uint256); defaults to ARAH_STAKE_WEI or 1e18.",
+        help=(
+            "Stake count in WHOLE ProjectToken units (decimals==0). "
+            "Defaults to ARAH_STAKE or 1. The contract only requires stake > 0."
+        ),
     )
     p.add_argument("--reward-recipient", type=str, required=True, help="address")
     p.add_argument(
         "--buy-value-wei",
         type=str,
         default="0",
-        help="ETH (wei) to send with ProjectToken.buy() if balance < stake; auto-filled when --auto-buy is set.",
+        help="Native wei to send with ProjectToken.buy() if balance < stake; auto-filled when --auto-buy is set.",
     )
     p.add_argument(
         "--auto-buy",
         action="store_true",
         help="If token balance < stake, quote the missing stake with costBetween(...) and call buy() automatically.",
+    )
+    p.add_argument(
+        "--budget",
+        type=str,
+        default=None,
+        help=(
+            "Optional cap on --auto-buy curve cost. Accepts '0.05og', '<wei>wei', '0x..'. "
+            "Aborts before sending if the quoted cost exceeds this budget."
+        ),
     )
     p.add_argument(
         "--buy-slippage-bps",
@@ -281,13 +334,83 @@ def main() -> int:
     token = w3.eth.contract(address=Web3.to_checksum_address(token_addr), abi=token_abi)
 
     nonce = w3.eth.get_transaction_count(owner)
-    balance = token.functions.balanceOf(owner).call()
+    balance = int(token.functions.balanceOf(owner).call())
+
+    # Read live token params and assert decimals == 0 before any quoting.
+    decimals = int(token.functions.decimals().call())
+    base_price = int(token.functions.basePrice().call())
+    slope = int(token.functions.slope().call())
+    total_supply = int(token.functions.totalSupply().call())
+    print(
+        json.dumps(
+            {
+                "token": token_addr,
+                "decimals": decimals,
+                "basePrice": str(base_price),
+                "slope": str(slope),
+                "totalSupply": str(total_supply),
+                "ownerTokenBalance": str(balance),
+                "stakeTokens": str(stake),
+            },
+            indent=2,
+        )
+    )
+    if decimals != 0:
+        print(
+            f"refusing to size stake: ProjectToken decimals={decimals}, expected 0. "
+            "submit_proposal.py treats --stake as a whole-token count.",
+            file=sys.stderr,
+        )
+        return 1
+
+    budget_wei = parse_budget_wei(args.budget) if args.budget else None
+
     if balance < stake and not args.skip_buy:
         if args.auto_buy:
-            total_supply = int(token.functions.totalSupply().call())
             missing = stake - balance
-            quoted = int(token.functions.costBetween(total_supply, total_supply + missing).call())
-            buy_wei = quoted + (quoted * args.buy_slippage_bps // 10_000)
+            # Off-chain quote first (formula mirror), then cross-check with the
+            # contract's view function. They must agree exactly.
+            quoted_local = cost_between(base_price, slope, total_supply, total_supply + missing)
+            quoted_chain = int(
+                token.functions.costBetween(total_supply, total_supply + missing).call()
+            )
+            if quoted_local != quoted_chain:
+                print(
+                    f"bonding-curve formula mismatch: local={quoted_local} chain={quoted_chain}",
+                    file=sys.stderr,
+                )
+                return 1
+            quoted = quoted_chain
+            slippage = quoted * args.buy_slippage_bps // 10_000
+            buy_wei = quoted + slippage
+
+            native_balance = int(w3.eth.get_balance(owner))
+            available = native_balance - GAS_RESERVE_WEI
+            print(
+                f"buy preflight: missing {missing} tokens; "
+                f"curve cost {format_og(quoted)} OG + slippage {format_og(slippage)} OG "
+                f"+ gas reserve {format_og(GAS_RESERVE_WEI)} OG "
+                f"= total {format_og(buy_wei + GAS_RESERVE_WEI)} OG; "
+                f"wallet has {format_og(native_balance)} OG"
+            )
+            if buy_wei > available:
+                shortfall = buy_wei - available
+                print(
+                    f"insufficient native balance for --auto-buy: need additional "
+                    f"{format_og(shortfall)} OG (curve {format_og(buy_wei)} + reserve "
+                    f"{format_og(GAS_RESERVE_WEI)}, have {format_og(native_balance)}). "
+                    "Lower --stake or top up the wallet.",
+                    file=sys.stderr,
+                )
+                return 1
+            if budget_wei is not None and buy_wei > budget_wei:
+                print(
+                    f"--auto-buy cost {format_og(buy_wei)} OG exceeds --budget "
+                    f"{format_og(budget_wei)} OG; aborting before sending tx.",
+                    file=sys.stderr,
+                )
+                return 1
+
         if buy_wei <= 0:
             print(
                 f"token balance {balance} < stake {stake}; pass --auto-buy, --buy-value-wei, or --skip-buy",
@@ -302,7 +425,7 @@ def main() -> int:
                 "chainId": cid,
             }
         )
-        print("buy() …")
+        print(f"buy() value={format_og(buy_wei)} OG (msg.value={buy_wei} wei) …")
         send_or_dump(w3, account, buy_tx, args.dry_run)
         nonce = nonce + 1 if args.dry_run else w3.eth.get_transaction_count(owner)
 

@@ -6,7 +6,7 @@ For on-chain mining, put the miner key in `.env` in the current working director
 
 ```bash
 ARAH_PRIVATE_KEY=0x...
-ARAH_STAKE_WEI=1000000000000000000
+ARAH_STAKE=1
 ```
 
 Then run wallet preflight before trials:
@@ -37,4 +37,4 @@ python3 scripts/submit_trial_proposal.py \
   --auto-buy
 ```
 
-`--auto-buy` resolves the project token, buys missing ProjectToken stake when needed, approves `ProposalLedger`, and submits the proposal. If `ARAH_STAKE_WEI` is absent, scripts default to `1000000000000000000` ProjectToken base units. Full workflow details are in [SKILL.md](SKILL.md).
+`--auto-buy` resolves the project token, buys missing ProjectToken stake when needed, approves `ProposalLedger`, and submits the proposal. ProjectToken has `decimals() == 0`, so `ARAH_STAKE` (or `--stake`) is a count of whole tokens; scripts default to `1` when absent (the contract only requires `stake > 0`). Pass `--budget 0.05og` to cap how much native gas `--auto-buy` may spend on the bonding curve. Full workflow details are in [SKILL.md](SKILL.md).

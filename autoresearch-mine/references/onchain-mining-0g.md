@@ -15,7 +15,7 @@ This file distills the **miner submit path** from [`autoresearch-create/referenc
 
 ## Miner transaction order
 
-0. **Wallet preflight:** `ARAH_PRIVATE_KEY` must derive the miner EVM address that will pay gas, buy missing stake, approve the ledger, and submit. Scripts load `.env` from the current working directory, so if the key is missing ask the user to create `.env` with `ARAH_PRIVATE_KEY=0x...` and optional `ARAH_STAKE_WEI=1000000000000000000`. Run **`scripts/check_wallet.py`** with `--project-id` or `--token-address` before starting the mining loop.
+0. **Wallet preflight:** `ARAH_PRIVATE_KEY` must derive the miner EVM address that will pay gas, buy missing stake, approve the ledger, and submit. Scripts load `.env` from the current working directory, so if the key is missing ask the user to create `.env` with `ARAH_PRIVATE_KEY=0x...` and optional `ARAH_STAKE=1` (whole tokens; ProjectToken `decimals() == 0`, so the contract only requires `stake > 0`). Run **`scripts/check_wallet.py`** with `--project-id` or `--token-address` before starting the mining loop.
 1. **`ProjectRegistry.tokenOf(projectId)`** → project token address. If the miner only has a token address, scan `tokenOf(0..nextProjectId-1)` to recover `projectId`.
 2. **`ProjectToken.balanceOf(wallet)`** and **`allowance(wallet, ProposalLedger)`** → check stake readiness.
 3. **`ProjectToken.costBetween(totalSupply, totalSupply + missingStake)`** → quote the native value needed to buy missing stake.
