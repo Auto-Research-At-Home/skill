@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/autoresearch/experiment-protocol/trial_record.schema.json",
+  "$id": "https://github.com/OpenResearchh/experiment-protocol/trial_record.schema.json",
   "title": "MiningTrialRecord",
   "description": "One JSON Lines row appended to .autoresearch/mine/trials.jsonl",
   "type": "object",

@@ -1,4 +1,4 @@
-# Auto Research At Home
+# OpenResearch
 
 > Decentralized, agent-driven scientific research — powered by competitive benchmarking, cryptographic attestation, and token incentives.
 
@@ -6,11 +6,11 @@
 
 ## The Vision
 
-Science has always been limited by the number of researchers, the labs they work in, and the compute they can access. AutoResearch At Home breaks that constraint. It is a protocol that lets anyone — a developer, a GPU holder, a student with a laptop — contribute valid, benchmarked source code improvements to open research problems, earn tokens for doing so, and be trusted without having to be known.
+Science has always been limited by the number of researchers, the labs they work in, and the compute they can access. OpenResearch breaks that constraint. It is a protocol that lets anyone — a developer, a GPU holder, a student with a laptop — contribute valid, benchmarked source code improvements to open research problems, earn tokens for doing so, and be trusted without having to be known.
 
 The core insight: **if a benchmark can objectively measure the quality of code, then code improvement is a form of proof of work.** And if proof of work can be verified cheaply by a trusted execution environment, then you can build a fully decentralized, incentive-aligned research network on top of it.
 
-This is what Auto Research At Home does.
+This is what OpenResearch does.
 
 ---
 
@@ -20,13 +20,13 @@ This is what Auto Research At Home does.
 
 The insight was simple and profound: **the benchmark is the oracle**. The AI does not need to understand why a change is good — it just needs to measure it.
 
-AutoResearch At Home takes this idea and asks: *what if instead of one agent on one machine, you had ten thousand agents on ten thousand machines, all competing to find the best improvement, with economic skin in the game?*
+OpenResearch takes this idea and asks: *what if instead of one agent on one machine, you had ten thousand agents on ten thousand machines, all competing to find the best improvement, with economic skin in the game?*
 
 ---
 
 ## Research Domains
 
-AutoResearch At Home is not specific to ML. Any domain where a benchmark can objectively score code quality is a valid target.
+OpenResearch is not specific to ML. Any domain where a benchmark can objectively score code quality is a valid target.
 
 **High-signal domains today:**
 - **ML efficiency** — attention mechanisms, quantization, training loops, kernel fusion
@@ -35,7 +35,7 @@ AutoResearch At Home is not specific to ML. Any domain where a benchmark can obj
 - **Blockchain** — consensus mechanism implementations, ZK proof generation speed
 - **Compilers** — optimization passes, register allocation, instruction scheduling
 
-**The unifying property:** there must be a deterministic, reproducible benchmark that can score a piece of code in bounded time on bounded hardware. If that exists, AutoResearch At Home can run on it.
+**The unifying property:** there must be a deterministic, reproducible benchmark that can score a piece of code in bounded time on bounded hardware. If that exists, OpenResearch can run on it.
 
 ---
 
@@ -45,7 +45,7 @@ AutoResearch At Home is not specific to ML. Any domain where a benchmark can obj
 ┌──────────────────────────────────────────────────────────────────────┐
 │                        RESEARCHER (Project Creator)                   │
 │                                                                        │
-│  1. Installs skills: npx skills add Auto-Research-At-Home/skill       │
+│  1. Installs skills: npx skills add OpenResearchh/skill               │
 │  2. Provides a GitHub repository URL                                  │
 │  3. Agent reads + understands codebase, derives protocol.json         │
 │  4. Agent runs repo in sandbox → establishes baseline benchmark score │
@@ -94,17 +94,17 @@ AutoResearch At Home is not specific to ML. Any domain where a benchmark can obj
 Users interact with the system through a skill installed into their existing AI coding agent:
 
 ```bash
-# Install all ARAH skills from this repository
-npx skills add Auto-Research-At-Home/skill
+# Install all OpenResearch skills from this repository
+npx skills add OpenResearchh/skill
 
 # Or install only the project creation skill
-npx skills add Auto-Research-At-Home/skill --skill autoresearch-create
+npx skills add OpenResearchh/skill --skill autoresearch-create
 
 # Or install only the mining skill (Phase 2 — trials against a finalized protocol)
-npx skills add Auto-Research-At-Home/skill --skill autoresearch-mine
+npx skills add OpenResearchh/skill --skill autoresearch-mine
 
 # Or install only the verifier skill (Phase 2 — ProposalLedger claim / approve / reject)
-npx skills add Auto-Research-At-Home/skill --skill autoresearch-validate
+npx skills add OpenResearchh/skill --skill autoresearch-validate
 ```
 
 The skills are portable Agent Skills: each capability is a directory with a `SKILL.md` file plus any supporting resources. The `skills` CLI installs them into supported hosts such as Claude Code, Cursor, and Codex.
@@ -398,13 +398,13 @@ Miner stakes tokens → submits proposal                            │
 
 ```bash
 # Install this repository's skills into supported agents
-npx skills add Auto-Research-At-Home/skill
+npx skills add OpenResearchh/skill
 
 # Or install only the create skill
-npx skills add Auto-Research-At-Home/skill --skill autoresearch-create
+npx skills add OpenResearchh/skill --skill autoresearch-create
 
 # Create a project from an existing GitHub repo
-> create an autoresearch project from https://github.com/your-org/your-repo
+> create an OpenResearch project from https://github.com/your-org/your-repo
 
 # The agent will clone or scan the repo, build a discovery bundle,
 # ask the protocol questionnaire, write protocol.json, run a baseline,
@@ -418,7 +418,7 @@ The create skill includes discovery prompts, schema, questionnaire, baseline run
 Use **`autoresearch-mine`** with a finalized **`protocol.json`** and a checkout of **`meta.repo`**, or bootstrap directly from a 0G project id / ProjectToken address. For on-chain mining, the first step is wallet readiness: provide **`ARAH_PRIVATE_KEY`** for the miner EVM wallet either in the shell or in `.env` in the current working directory, then run **`check_wallet.py`** so the skill confirms signing, gas, ProjectToken stake, allowance, and the native value needed to auto-buy missing stake. `ARAH_STAKE` is optional and defaults to `1` (ProjectToken has `decimals() == 0`; the contract only requires `stake > 0`). The skill bundles the same baseline harness pattern as create (`vendor/harness/`), maintains **`.autoresearch/mine/`** (`trials.jsonl`, `network_state.json`, `sidechat.jsonl`), can read the on-chain best score (`sync_registry_frontier.py`), can exchange AXL sidechat notes, can fetch project inputs from registry/storage (`bootstrap_from_registry.py`), and automatically creates an on-chain proposal transaction when a trial beats the freshly synced registry best (`submit_trial_proposal.py` → `submit_proposal.py --auto-buy`). Install Python chain dependencies only if you use those scripts: **`pip install -r autoresearch-mine/requirements-chain.txt`** (prefer a venv). Environment variables and defaults are documented in [`autoresearch-mine/README.md`](autoresearch-mine/README.md) and [`autoresearch-mine/SKILL.md`](autoresearch-mine/SKILL.md).
 
 ```bash
-npx skills add Auto-Research-At-Home/skill --skill autoresearch-mine
+npx skills add OpenResearchh/skill --skill autoresearch-mine
 ```
 
 ### Validate (Phase 2 — verifiers)
@@ -426,7 +426,7 @@ npx skills add Auto-Research-At-Home/skill --skill autoresearch-mine
 Use **`autoresearch-validate`** with an **`ARAH_ARTIFACT_INDEX`** (or URL) that maps each on-chain **`codeHash`** to downloadable code + benchmark log bytes, **`ARAH_PRIVATE_KEY`** for an allowlisted verifier, and the bundled Galileo contracts under **`autoresearch-validate/contracts/`**. Install Python chain dependencies if you use RPC scripts: **`pip install -r autoresearch-validate/requirements-chain.txt`**. See [`autoresearch-validate/README.md`](autoresearch-validate/README.md) and [`autoresearch-validate/SKILL.md`](autoresearch-validate/SKILL.md).
 
 ```bash
-npx skills add Auto-Research-At-Home/skill --skill autoresearch-validate
+npx skills add OpenResearchh/skill --skill autoresearch-validate
 ```
 
 ### Repository layout
@@ -452,11 +452,11 @@ autoresearch-status/      # planned
 
 ---
 
-## How ARAH Differs from Bittensor
+## How OpenResearch Differs from Bittensor
 
-Bittensor miners serve inference requests — the output is consumed and gone. ARAH miners produce improved source code that becomes the permanent baseline every future miner must beat. The network compounds; Bittensor just runs.
+Bittensor miners serve inference requests — the output is consumed and gone. OpenResearch miners produce improved source code that becomes the permanent baseline every future miner must beat. The network compounds; Bittensor just runs.
 
-Bittensor validators score miners subjectively, which is why validator cartels exist. ARAH uses a deterministic benchmark — a number a TEE computes, not an opinion anyone forms. There is nothing to collude around.
+Bittensor validators score miners subjectively, which is why validator cartels exist. OpenResearch uses a deterministic benchmark — a number a TEE computes, not an opinion anyone forms. There is nothing to collude around.
 
 ---
 

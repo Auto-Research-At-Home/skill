@@ -1,7 +1,7 @@
 {
-  "name": "autoresearch-skills",
+  "name": "openresearch-skills",
   "version": "0.0.1",
-  "description": "Auto Research At Home (ARAH) — agent skills for bootstrapping decentralized research projects from existing GitHub repositories.",
+  "description": "OpenResearch — agent skills for bootstrapping decentralized research projects from existing GitHub repositories.",
   "license": "MIT",
   "scripts": {
     "test": "node --test"
@@ -18,12 +18,12 @@
     "cursor",
     "codex",
     "autoresearch",
-    "arah",
+    "openresearch",
     "desci"
   ],
-  "homepage": "https://github.com/Auto-Research-At-Home/skill",
+  "homepage": "https://github.com/OpenResearchh/skill",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Auto-Research-At-Home/skill.git"
+    "url": "git+https://github.com/OpenResearchh/skill.git"
   }
 }

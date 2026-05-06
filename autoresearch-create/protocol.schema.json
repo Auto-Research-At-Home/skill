@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/autoresearch/experiment-protocol/protocol.schema.json",
+  "$id": "https://github.com/OpenResearchh/experiment-protocol/protocol.schema.json",
   "title": "ExperimentLoopProtocol",
   "description": "Versioned experiment-loop contract: environment, mutable surface, execution, measurement, provenance. Use schemaKind \"protocol\" for finalized bundles; \"discoveryDraft\" for LLM discovery output prior to merge and validation.",
   "oneOf": [
