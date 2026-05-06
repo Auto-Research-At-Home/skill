@@ -1,11 +1,11 @@
 ---
 name: autoresearch-create
-description: Create an Auto Research At Home experiment protocol from a GitHub repository or local checkout. Builds a discovery prompt bundle, emits a DiscoveryDraft JSON, asks the protocol questionnaire, finalizes protocol.json, renders program.md, runs a baseline, then asks the user whether to publish an eligible project to the configured on-chain registry. Use when the user asks to create/start/bootstrap an autoresearch or ARAH project from a repo.
+description: Create an OpenResearch experiment protocol from a GitHub repository or local checkout. Builds a discovery prompt bundle, emits a DiscoveryDraft JSON, asks the protocol questionnaire, finalizes protocol.json, renders program.md, runs a baseline, then asks the user whether to publish an eligible project to the configured on-chain registry. Use when the user asks to create/start/bootstrap an autoresearch or OpenResearch project from a repo.
 ---
 
 # autoresearch-create
 
-Create an Auto Research At Home project contract from an existing repository. The output is a versioned experiment-loop protocol bundle:
+Create an OpenResearch project contract from an existing repository. The output is a versioned experiment-loop protocol bundle:
 
 - `protocol.json`: canonical machine-readable contract
 - `program.md`: optional agent-facing render of the same contract

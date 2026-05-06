@@ -1,6 +1,6 @@
 ---
 name: autoresearch-validate
-description: Verify Auto Research At Home mining proposals on-chain. Resolve code/benchmark artifacts by bytes32, rerun bundled harness, deterministic static gates, approve or reject via ProposalLedger. Fully unattended driver with artifact index, no GitHub PR workflow. Use when operating a verifier node or rerunning benchmark proofs against ProposalLedger.
+description: Verify OpenResearch mining proposals on-chain. Resolve code/benchmark artifacts by bytes32, rerun bundled harness, deterministic static gates, approve or reject via ProposalLedger. Fully unattended driver with artifact index, no GitHub PR workflow. Use when operating a verifier node or rerunning benchmark proofs against ProposalLedger.
 ---
 
 # autoresearch-validate

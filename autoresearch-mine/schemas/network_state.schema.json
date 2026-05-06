@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/autoresearch/experiment-protocol/network_state.schema.json",
+  "$id": "https://github.com/OpenResearchh/experiment-protocol/network_state.schema.json",
   "title": "MiningNetworkState",
   "description": ".autoresearch/mine/network_state.json — manual frontier (v1) or registry sync (0G)",
   "oneOf": [

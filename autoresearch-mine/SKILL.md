@@ -1,6 +1,6 @@
 ---
 name: autoresearch-mine
-description: Run the Phase 2 Auto Research At Home mining loop on a finalized protocol.json and target repo. Self-contained bundled harness (run_baseline, preview_metrics), append-only trials.jsonl, optional miningLoop session limits, network_state (manual or 0G ProjectRegistry sync), optional submit to ProposalLedger, unattended stop conditions. Use when the user wants to mine without installing autoresearch-create.
+description: Run the Phase 2 OpenResearch mining loop on a finalized protocol.json and target repo. Self-contained bundled harness (run_baseline, preview_metrics), append-only trials.jsonl, optional miningLoop session limits, network_state (manual or 0G ProjectRegistry sync), optional submit to ProposalLedger, unattended stop conditions. Use when the user wants to mine without installing autoresearch-create.
 ---
 
 # autoresearch-mine
