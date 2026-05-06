@@ -14,7 +14,7 @@ Run **unattended** mining against a finalized `protocol.json` and a **git checko
 - `protocol.json` with `schemaKind: protocol` and `meta.eligibility: eligible`.
 - `jq`, `git`, `bash`, `python3` on PATH.
 - Target repo checkout (or run `bootstrap_repo.sh` to clone from `meta.repo.cloneUrl`).
-- For on-chain mining, an EVM wallet in **`ARAH_PRIVATE_KEY`** before the loop starts. Scripts load `.env` from the current working directory; if the key is missing, ask the user to create `.env` with `ARAH_PRIVATE_KEY=0x...` and optional `ARAH_STAKE_WEI=1000000000000000000`. Run **`check_wallet.py`** first so the miner can sign transactions, has native gas, and either has enough ProjectToken stake or enough native balance to buy the missing stake automatically.
+- For on-chain mining, an EVM wallet in **`ARAH_PRIVATE_KEY`** before the loop starts. Scripts load `.env` from the current working directory; if the key is missing, ask the user to create `.env` with `ARAH_PRIVATE_KEY=0x...` and optional `ARAH_STAKE=1` (whole tokens; ProjectToken has `decimals() == 0`). Run **`check_wallet.py`** first so the miner can sign transactions, has native gas, and either has enough ProjectToken stake or enough native balance to buy the missing stake automatically.
 
 ## Unattended mode
 
@@ -45,7 +45,7 @@ Run **unattended** mining against a finalized `protocol.json` and a **git checko
 | `ARAH_METRIC_SCALE` | Integer scale for int256 ↔ float (match `createProject`; default **1000000**). |
 | `ARAH_PRIVATE_KEY` | Miner EVM key for **`check_wallet.py`** and **`submit_proposal.py`** (hex, no `0x` prefix accepted by eth-account either way). May be set in the shell or in `.env` in the current working directory. |
 | `ARAH_PROJECT_ID` | On-chain **project id** for frontier sync; overrides **`miningLoop.onChainProjectId`** in `protocol.json` when set. |
-| `ARAH_STAKE_WEI` | Optional stake amount. Defaults to **`1000000000000000000`** ProjectToken base units when absent. |
+| `ARAH_STAKE` | Optional stake count in **whole** ProjectToken units (decimals==0). Defaults to **`1`** when absent — the contract only requires `stake > 0`. |
 
 Install Python chain deps once: **`pip install -r requirements-chain.txt`** (e.g. in a venv).
 
@@ -128,7 +128,7 @@ When the user provides a project token address or 0G project id, start by checki
 ```bash
 # .env in the current working directory:
 # ARAH_PRIVATE_KEY=0x...
-# ARAH_STAKE_WEI=1000000000000000000
+# ARAH_STAKE=1
 
 python3 ./check_wallet.py \
   --token-address 0xProjectTokenAddress

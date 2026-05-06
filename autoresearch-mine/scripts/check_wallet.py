@@ -70,7 +70,7 @@ def main() -> int:
     p.add_argument(
         "--stake",
         default=env_or_default_stake(),
-        help="Required ProjectToken stake in wei/token base units; defaults to ARAH_STAKE_WEI or 1e18.",
+        help="Required ProjectToken stake in WHOLE tokens (decimals==0). Defaults to ARAH_STAKE or 1.",
     )
     p.add_argument(
         "--buy-slippage-bps",

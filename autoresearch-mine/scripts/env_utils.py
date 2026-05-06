@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-DEFAULT_STAKE_WEI = "1000000000000000000"
+DEFAULT_STAKE_TOKENS = "1"
 
 
 def _strip_quotes(value: str) -> str:
@@ -42,12 +42,17 @@ def load_dotenv_from_cwd() -> Path | None:
 
 
 def env_or_default_stake() -> str:
-    return os.environ.get("ARAH_STAKE_WEI", DEFAULT_STAKE_WEI)
+    """Return the configured stake count in *whole ProjectToken units*.
+
+    ProjectToken has decimals() == 0, so the stake is just an integer count
+    of tokens. Defaults to 1 — the contract only requires stake > 0.
+    """
+    return os.environ.get("ARAH_STAKE", DEFAULT_STAKE_TOKENS)
 
 
 def missing_private_key_message() -> str:
     return (
         "ARAH_PRIVATE_KEY is required. Put a .env file in the current working directory "
-        "with ARAH_PRIVATE_KEY=0x... and optionally ARAH_STAKE_WEI="
-        f"{DEFAULT_STAKE_WEI}, then rerun."
+        "with ARAH_PRIVATE_KEY=0x... and optionally ARAH_STAKE="
+        f"{DEFAULT_STAKE_TOKENS} (whole ProjectToken units), then rerun."
     )

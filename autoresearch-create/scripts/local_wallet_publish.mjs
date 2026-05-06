@@ -929,7 +929,7 @@ function debounce(fn, ms) {
 }
 
 function mountBuyPanel(buy) {
-  const decimals = Number(buy.decimals || 18);
+  const decimals = Number(buy.decimals ?? 0);
   const symbol = buy.tokenSymbol || "tokens";
   const minerPoolCap = BigInt(buy.minerPoolCap || "0");
   const tokenAddress = buy.tokenAddress;

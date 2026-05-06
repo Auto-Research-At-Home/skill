@@ -42,7 +42,7 @@ function usage() {
     --token-symbol MRT \\
     --base-price 1000000000000000 \\
     --slope 1000000000000 \\
-    --miner-pool-cap 1000000000000000000000000 \\
+    --miner-pool-cap 21000000 \\
     --upload-artifacts-to-0g \\
     --yes
 
@@ -303,7 +303,7 @@ async function main() {
       basePrice: inputs.basePrice.toString(),
       slope: inputs.slope.toString(),
       minerPoolCap: inputs.minerPoolCap.toString(),
-      decimals: 18,
+      decimals: 0,
     },
   });
   await walletSession?.close({ delayMs: 5000 });
