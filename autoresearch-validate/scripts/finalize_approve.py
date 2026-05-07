@@ -16,9 +16,9 @@ from chain_config import chain_id, chain_rpc_url, deployment_dir, load_contract_
 from chain_tx import send_or_dump
 from metric_codec import decimal_metric_to_scaled_int
 from metrics_hash import file_sha256_bytes32
+from verifier_account import add_wallet_args, legacy_private_key_warning, load_account
 
 try:
-    from eth_account import Account
     from web3 import Web3
 except ImportError:
     print("Install chain extras: python3 -m pip install -r requirements-chain.txt", file=sys.stderr)
@@ -37,7 +37,9 @@ def main() -> int:
         default=int(os.environ.get("ARAH_METRIC_SCALE", "1000000")),
     )
     p.add_argument("--dry-run", action="store_true")
+    add_wallet_args(p)
     args = p.parse_args()
+    legacy_private_key_warning()
 
     if bool(args.verified_score_int256) == bool(args.verified_metric):
         p.error("provide exactly one of --verified-score-int256 or --verified-metric")
@@ -53,11 +55,6 @@ def main() -> int:
         print("metrics hash must be 32 bytes", file=sys.stderr)
         return 2
 
-    key = os.environ.get("ARAH_PRIVATE_KEY")
-    if not key and not args.dry_run:
-        print("ARAH_PRIVATE_KEY required (or --dry-run)", file=sys.stderr)
-        return 1
-
     deployment, deployment_path = load_deployment()
     dep_dir = deployment_dir(deployment_path)
     rpc = chain_rpc_url(deployment)
@@ -71,16 +68,19 @@ def main() -> int:
 
     abi = load_contract_abi(dep_dir, deployment["contracts"]["ProposalLedger"]["artifact"])
     ledger = w3.eth.contract(address=Web3.to_checksum_address(ledger_addr), abi=abi)
-    account = Account.from_key(key) if key else None
-    owner = account.address if account else "0x0000000000000000000000000000000000000000"
-
-    tx = ledger.functions.approve(args.proposal_id, score, mhash).build_transaction(
-        {"from": owner, "nonce": w3.eth.get_transaction_count(owner) if account else 0, "chainId": cid}
-    )
     if args.dry_run:
+        owner = "0x0000000000000000000000000000000000000000"
+        tx = ledger.functions.approve(args.proposal_id, score, mhash).build_transaction(
+            {"from": owner, "nonce": 0, "chainId": cid}
+        )
         print(json.dumps({"from": tx["from"], "to": tx["to"], "data": tx["data"]}, indent=2))
         return 0
-    assert account is not None
+
+    account = load_account(args)
+    owner = account.address
+    tx = ledger.functions.approve(args.proposal_id, score, mhash).build_transaction(
+        {"from": owner, "nonce": w3.eth.get_transaction_count(owner), "chainId": cid}
+    )
     receipt = send_or_dump(w3, account, tx, False)
     if receipt is not None:
         print(json.dumps({"status": receipt.status, "transactionHash": receipt.transactionHash.hex()}))

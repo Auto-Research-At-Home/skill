@@ -10,7 +10,8 @@
   "$defs": {
     "ProtocolVersion": {
       "type": "string",
-      "enum": ["1.0"]
+      "enum": ["1.0", "1.1"],
+      "description": "1.0 = original schema. 1.1 = MAY use environment.constraints.networkAllowlist, structured {kind,args} setupCommands, and environment.sandbox. Version is purely a discoverability signal so verifiers know whether they need a newer skill to faithfully reproduce the bundle; both versions remain hash-compatible because new fields are optional."
     },
     "SchemaKind": {
       "type": "string",
@@ -74,9 +75,40 @@
         "noNewDependencies": { "type": "boolean" },
         "networkPolicy": {
           "type": "string",
-          "enum": ["sandbox", "full", "offline", "unknown"]
+          "enum": ["sandbox", "full", "offline", "unknown"],
+          "description": "sandbox/offline/unknown -> --network=none in the harness (unknown fails closed). full -> bridged egress, but the harness refuses to launch unless the operator sets ARAH_ALLOW_FULL_NETWORK=1, since networkAllowlist is not yet enforced on egress."
+        },
+        "networkAllowlist": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Optional egress allowlist (host or host:port) for networkPolicy=full. The harness MAY enforce; validators MUST treat undeclared hosts as a fraud signal."
         }
       }
+    },
+    "SetupCommand": {
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "Legacy free-form shell snippet executed via `bash -c` inside the sandbox."
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "args"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": ["pip", "uv", "npm", "pnpm", "yarn", "cargo", "make", "bash", "sh"],
+              "description": "Closed set of entrypoints the harness knows. The harness maps each kind to a fixed argv[0] so protocol authors cannot inject a different binary."
+            },
+            "args": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "argv tail passed to the entrypoint. For kind=bash/sh this is one string under -c."
+            }
+          }
+        }
+      ]
     },
     "Environment": {
       "type": "object",
@@ -95,13 +127,24 @@
         },
         "setupCommands": {
           "type": "array",
-          "items": { "type": "string" },
-          "description": "Ordered shell commands to prepare the environment (no secrets in schema)."
+          "items": { "$ref": "#/$defs/SetupCommand" },
+          "description": "Ordered preparation steps. Each entry is either a free-form string (legacy) or a structured {kind,args} object. All entries run inside the sandbox; none are evaluated on the host."
         },
         "assetPrep": {
           "type": "array",
           "items": { "type": "string" },
           "description": "Data downloads, cache paths, checksum notes."
+        },
+        "sandbox": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Optional sandbox preferences (advisory; the miner's local config wins).",
+          "properties": {
+            "image": { "type": "string", "description": "Container image reference for podman/docker runtimes." },
+            "cpus": { "type": "string" },
+            "memory": { "type": "string" },
+            "pids": { "type": "integer", "minimum": 1 }
+          }
         },
         "constraints": { "$ref": "#/$defs/EnvironmentConstraints" }
       }

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Open GitHub PR with evidence from trial record; enforces network_state guardrails.
 set -euo pipefail
-export GIT_TERMINAL_PROMPT="${GIT_TERMINAL_PROMPT:-0}"
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=_git_safe.sh
+source "$SCRIPT_DIR/_git_safe.sh"
 
 ALLOW_LOCAL=0
 ARGS=()

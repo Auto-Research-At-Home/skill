@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Preflight an EVM miner wallet for 0G Galileo mining."""
+"""Preflight a mining wallet (keystore) for 0G Galileo mining.
+
+Reads the wallet address from a passphrase-encrypted keystore (no decryption
+needed for status checks). To sign txs later, scripts call `wallet.py send`
+with the same `--wallet-id` and the passphrase.
+"""
 
 from __future__ import annotations
 
@@ -22,7 +27,8 @@ from chain_config import (  # noqa: E402
     project_registry_address,
     proposal_ledger_address,
 )
-from env_utils import env_or_default_stake, load_dotenv_from_cwd, missing_private_key_message  # noqa: E402
+from env_utils import env_or_default_stake, load_dotenv_from_cwd, missing_wallet_message  # noqa: E402
+from wallet import keystore_path  # noqa: E402
 
 
 def parse_uint256(text: str | None) -> int | None:
@@ -34,14 +40,13 @@ def parse_uint256(text: str | None) -> int | None:
     return n
 
 
-def load_chain_deps() -> tuple[Any, Any]:
+def load_chain_deps() -> Any:
     try:
-        from eth_account import Account
         from web3 import Web3
     except ImportError as e:
         print("Install chain extras: pip install -r requirements-chain.txt", file=sys.stderr)
         raise SystemExit(1) from e
-    return Account, Web3
+    return Web3
 
 
 def resolve_project_id(registry: Any, w3: Any, project_id: int | None, token_address: str | None) -> int | None:
@@ -61,10 +66,22 @@ def resolve_project_id(registry: Any, w3: Any, project_id: int | None, token_add
     raise ValueError(f"token address not found in ProjectRegistry: {token_address}")
 
 
+def load_keystore_address(wallet_id: str) -> str:
+    path = keystore_path(wallet_id)
+    if not path.is_file():
+        raise FileNotFoundError(missing_wallet_message(wallet_id))
+    data = json.loads(path.read_text(encoding="utf-8"))
+    addr = data.get("address")
+    if not addr:
+        raise ValueError(f"keystore at {path} has no address field")
+    return ("0x" + addr) if not str(addr).startswith("0x") else str(addr)
+
+
 def main() -> int:
     load_dotenv_from_cwd()
 
-    p = argparse.ArgumentParser(description="Check ARAH_PRIVATE_KEY, RPC, balances, allowance, and stake readiness.")
+    p = argparse.ArgumentParser(description="Check the mining wallet (RPC, balances, allowance, stake readiness).")
+    p.add_argument("--wallet-id", required=True, help="Local keystore id (created by `wallet.py init --id ...`)")
     p.add_argument("--project-id", type=int)
     p.add_argument("--token-address")
     p.add_argument(
@@ -83,9 +100,10 @@ def main() -> int:
     if args.buy_slippage_bps < 0:
         p.error("--buy-slippage-bps must be >= 0")
 
-    key = os.environ.get("ARAH_PRIVATE_KEY")
-    if not key:
-        print(missing_private_key_message(), file=sys.stderr)
+    try:
+        owner = load_keystore_address(args.wallet_id)
+    except (FileNotFoundError, ValueError) as e:
+        print(str(e), file=sys.stderr)
         return 1
 
     try:
@@ -95,9 +113,7 @@ def main() -> int:
         return 1
 
     try:
-        Account, Web3 = load_chain_deps()
-        account = Account.from_key(key)
-        owner = account.address
+        Web3 = load_chain_deps()
         deployment, deployment_path = load_deployment()
         dep_dir = deployment_path.parent
         rpc = chain_rpc_url(deployment)
@@ -108,6 +124,7 @@ def main() -> int:
         w3 = Web3(Web3.HTTPProvider(rpc))
         if not w3.is_connected():
             raise RuntimeError(f"RPC connect failed: {rpc}")
+        owner = Web3.to_checksum_address(owner)
 
         reg_abi = load_contract_abi(dep_dir, deployment["contracts"]["ProjectRegistry"]["artifact"])
         token_abi = load_contract_abi(dep_dir, deployment["contracts"]["ProjectToken"]["artifact"])
@@ -157,6 +174,7 @@ def main() -> int:
             json.dumps(
                 {
                     "ready": ready,
+                    "walletId": args.wallet_id,
                     "wallet": owner,
                     "chainId": cid,
                     "rpcUrl": rpc,

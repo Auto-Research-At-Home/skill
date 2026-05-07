@@ -110,14 +110,34 @@ def write_json(path: Path, obj: Any) -> None:
 
 
 def safe_extract_tar(tar_path: Path, dest: Path) -> None:
+    """Extract `tar_path` into `dest` with hardening against path traversal,
+    symlink/hardlink escapes, device files, and other dangerous member types.
+
+    Prefers the Python 3.12+ `filter='data'` extraction filter, which rejects
+    everything that isn't a regular file / dir / safe-target symlink. Falls
+    back to a manual path check for older interpreters.
+    """
     dest.mkdir(parents=True, exist_ok=True)
     with tarfile.open(tar_path) as tf:
         dest_resolved = dest.resolve()
+        # Defense in depth: still walk members and reject obvious escapes
+        # before letting the filter do its own pass.
         for member in tf.getmembers():
+            if member.isdev() or member.ischr() or member.isblk() or member.isfifo():
+                raise RuntimeError(f"refusing dangerous tar member type: {member.name}")
             target = (dest / member.name).resolve()
             if target != dest_resolved and dest_resolved not in target.parents:
                 raise RuntimeError(f"unsafe tar member path: {member.name}")
-        tf.extractall(dest)
+            if member.islnk() or member.issym():
+                link_target = (dest / member.name).parent / member.linkname
+                link_resolved = link_target.resolve()
+                if link_resolved != dest_resolved and dest_resolved not in link_resolved.parents:
+                    raise RuntimeError(f"unsafe tar link target: {member.name} -> {member.linkname}")
+        try:
+            tf.extractall(dest, filter="data")  # type: ignore[call-arg]
+        except TypeError:
+            # Python < 3.12 — manual check above is the only line of defense.
+            tf.extractall(dest)
 
 
 def find_repo_root(extract_dir: Path) -> Path:

@@ -6,7 +6,11 @@
   "additionalProperties": false,
   "required": ["schemaVersion", "entries"],
   "properties": {
-    "schemaVersion": { "type": "string", "const": "1" },
+    "schemaVersion": {
+      "type": "string",
+      "enum": ["1", "2"],
+      "description": "1 = original index. 2 = MAY include sandbox_image_digest and network_policy_used per entry, telling verifiers exactly which sandbox the miner used so they can match. Both versions are otherwise identical."
+    },
     "entries": {
       "type": "object",
       "description": "Map codeHash (0x + 64 hex, lowercase) to fetch instructions.",
@@ -20,6 +24,16 @@
           "benchmark_inline_path": {
             "type": "string",
             "description": "Path inside extracted tarball to the benchmark log file whose SHA-256 must match benchmarkLogHash."
+          },
+          "sandbox_image_digest": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._/-]+@sha256:[0-9a-f]{64}$",
+            "description": "Container image the miner ran the trial in, as `name@sha256:<digest>`. When set, verifiers SHOULD use this exact image (overriding both ARAH_SANDBOX_IMAGE and protocol.environment.sandbox.image) to maximize reproducibility. If absent, verifiers fall back to env / protocol / harness default."
+          },
+          "network_policy_used": {
+            "type": "string",
+            "enum": ["sandbox", "offline", "full"],
+            "description": "networkPolicy the miner actually ran with. Verifiers MUST run with the same value (and must have ARAH_ALLOW_FULL_NETWORK=1 for `full`); a divergence here is a common source of false rejects. Note `unknown` is not allowed here — by the time a proposal is on-chain, the miner knows exactly which policy produced the metric."
           }
         }
       }

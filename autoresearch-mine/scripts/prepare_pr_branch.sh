@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Create and checkout mine/<protocolBundleId>/<YYYYMMDD>-<trial_id> (UTC date).
 set -euo pipefail
-export GIT_TERMINAL_PROMPT="${GIT_TERMINAL_PROMPT:-0}"
+
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=_git_safe.sh
+source "$SCRIPT_DIR/_git_safe.sh"
 
 usage() {
   echo "Usage: $0 <protocol.json> <repo_root> <trial_id>" >&2

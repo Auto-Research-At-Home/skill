@@ -14,9 +14,9 @@ if str(SCRIPT_DIR) not in sys.path:
 
 from chain_config import chain_id, chain_rpc_url, deployment_dir, load_contract_abi, load_deployment, proposal_ledger_address
 from chain_tx import send_or_dump
+from verifier_account import add_wallet_args, legacy_private_key_warning, load_account
 
 try:
-    from eth_account import Account
     from web3 import Web3
 except ImportError:
     print("Install chain extras: python3 -m pip install -r requirements-chain.txt", file=sys.stderr)
@@ -27,12 +27,10 @@ def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--proposal-id", type=int, required=True)
     p.add_argument("--dry-run", action="store_true")
+    add_wallet_args(p)
     args = p.parse_args()
 
-    key = os.environ.get("ARAH_PRIVATE_KEY")
-    if not key:
-        print("ARAH_PRIVATE_KEY required", file=sys.stderr)
-        return 1
+    legacy_private_key_warning()
 
     deployment, deployment_path = load_deployment()
     dep_dir = deployment_dir(deployment_path)
@@ -48,7 +46,7 @@ def main() -> int:
     abi = load_contract_abi(dep_dir, deployment["contracts"]["ProposalLedger"]["artifact"])
     ledger = w3.eth.contract(address=Web3.to_checksum_address(ledger_addr), abi=abi)
 
-    account = Account.from_key(key)
+    account = load_account(args)
     owner = account.address
 
     tx = ledger.functions.claimReview(args.proposal_id).build_transaction(
