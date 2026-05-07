@@ -1,11 +1,22 @@
 #!/usr/bin/env bash
-# Run Phase-1 baseline from a finalized protocol.json: setup commands, timed main command, metric extract.
+# Run a finalized protocol's setup + main command inside a sandbox and extract the metric.
 #
 # Usage:
-#   ./run_baseline.sh <protocol.json> <repo_root> [--dry-run] [--log baseline_run.log]
+#   run_baseline.sh <protocol.json> <repo_root> [--dry-run] [--log baseline_run.log]
 #
-# Requires: jq, bash 4+. Uses GNU timeout on Linux, gtimeout (brew coreutils) on macOS when available,
-# otherwise python3 for subprocess timeouts.
+# All command execution is delegated to run_in_sandbox.sh. The host shell never
+# evaluates protocol-supplied strings except as argv to the sandbox. Setup
+# commands and the main command are executed inside a separate child runtime
+# with no host env passthrough, default-deny network, and resource caps.
+#
+# Knobs (env):
+#   ARAH_SANDBOX             auto|podman|docker|bwrap|none
+#   ARAH_SANDBOX_IMAGE       container image when using docker/podman
+#   ARAH_SANDBOX_CPUS        --cpus value (default 2)
+#   ARAH_SANDBOX_MEMORY      --memory value (default 4g)
+#   ARAH_SANDBOX_PIDS        --pids-limit (default 256)
+#   ARAH_SANDBOX_LOG_BYTES   tail bytes scanned for metric (default 65536)
+#   ARAH_SANDBOX_ALLOW_UNSAFE=1 + ARAH_SANDBOX=none to opt into host-mode (NOT recommended)
 #
 set -euo pipefail
 
@@ -45,51 +56,6 @@ if [[ ! -f "$PROTOCOL" ]]; then
   exit 1
 fi
 
-UNAME_S=$(uname -s)
-
-# Timeout selection: Linux prefers GNU timeout(1); macOS prefers gtimeout (brew install coreutils),
-# then any timeout on PATH; finally python3 subprocess (portable).
-run_with_timeout() {
-  local secs=$1
-  shift
-
-  if [[ "$secs" == "0" ]] || [[ -z "$secs" ]]; then
-    "$@"
-    return $?
-  fi
-
-  if [[ "$UNAME_S" == "Linux" ]] && command -v timeout >/dev/null 2>&1; then
-    timeout "$secs" "$@"
-    return $?
-  fi
-
-  if [[ "$UNAME_S" == "Darwin" ]] && command -v gtimeout >/dev/null 2>&1; then
-    gtimeout "$secs" "$@"
-    return $?
-  fi
-
-  if command -v timeout >/dev/null 2>&1; then
-    timeout "$secs" "$@"
-    return $?
-  fi
-
-  if command -v gtimeout >/dev/null 2>&1; then
-    gtimeout "$secs" "$@"
-    return $?
-  fi
-
-  if command -v python3 >/dev/null 2>&1; then
-    python3 -c 'import subprocess, sys
-s = int(sys.argv[1])
-raise SystemExit(subprocess.run(sys.argv[2:], timeout=s).returncode)' "$secs" "$@"
-    return $?
-  fi
-
-  log_fail "no timeout binary (timeout/gtimeout/python3); running without wall limit."
-  "$@"
-  return $?
-}
-
 SKIND=$(jq -r '.schemaKind // empty' "$PROTOCOL")
 if [[ "$SKIND" != "protocol" ]]; then
   log_fail "protocol.json must have schemaKind \"protocol\" (got: ${SKIND:-missing})."
@@ -98,75 +64,150 @@ fi
 
 REL_CWD=$(jq -r '.execution.cwd // "."' "$PROTOCOL")
 HARD=$(jq -r '.execution.hardTimeoutSeconds // 0' "$PROTOCOL")
-# Normalize to integer seconds for timeout(1) / Python.
 HARD=$(printf '%.0f' "$HARD")
 MAIN_CMD=$(jq -r '.execution.command // empty' "$PROTOCOL")
+NET_POLICY=$(jq -r '.environment.constraints.networkPolicy // "sandbox"' "$PROTOCOL")
 
 if [[ -z "$MAIN_CMD" ]]; then
   log_fail "execution.command is empty."
   exit 1
 fi
 
-WORKDIR="$REPO_ROOT/$REL_CWD"
-WORKDIR=$(cd "$WORKDIR" && pwd)
-
+WORKDIR="$REPO_ROOT"
 if [[ -z "$LOG_FILE" ]]; then
-  LOG_FILE="$WORKDIR/baseline_run.log"
+  LOG_FILE="$REPO_ROOT/$REL_CWD/baseline_run.log"
 fi
 
+# Translate protocol networkPolicy -> sandbox flag.
+# Fail closed on unknown / unspecified; require an explicit operator opt-in for `full`
+# because we do not yet enforce environment.constraints.networkAllowlist on egress.
+case "$NET_POLICY" in
+  sandbox|offline|unknown) SBX_NETWORK="none" ;;
+  full)
+    if [[ -z "${ARAH_ALLOW_FULL_NETWORK:-}" ]]; then
+      log_fail "protocol declares networkPolicy=full but ARAH_ALLOW_FULL_NETWORK is not set."
+      log_fail "The harness does not yet enforce environment.constraints.networkAllowlist;"
+      log_fail "set ARAH_ALLOW_FULL_NETWORK=1 to opt into bridged egress on this host."
+      exit 1
+    fi
+    SBX_NETWORK="bridge"
+    ;;
+  *) log_fail "invalid environment.constraints.networkPolicy: $NET_POLICY"; exit 1 ;;
+esac
+
+# Sandbox knobs: env var > protocol environment.sandbox > harness default.
+# environment.sandbox is part of protocolHash, so miner and verifier read the
+# same defaults and produce the same metric absent local overrides.
+PROTO_IMAGE=$(jq -r '.environment.sandbox.image // empty' "$PROTOCOL")
+PROTO_CPUS=$(jq -r '.environment.sandbox.cpus // empty' "$PROTOCOL")
+PROTO_MEMORY=$(jq -r '.environment.sandbox.memory // empty' "$PROTOCOL")
+PROTO_PIDS=$(jq -r '.environment.sandbox.pids // empty' "$PROTOCOL")
+
+# Warn (but don't fail) when the protocol pinned an image by tag rather than
+# digest; mismatched tag content between miner/verifier silently breaks
+# reproducibility. Digest pins look like `name@sha256:<64hex>`.
+if [[ -n "$PROTO_IMAGE" ]] && [[ "$PROTO_IMAGE" != *"@sha256:"* ]]; then
+  log_detail "warning: environment.sandbox.image is tag-pinned ($PROTO_IMAGE); for reproducibility prefer name@sha256:<digest>."
+fi
+
+IMAGE=${ARAH_SANDBOX_IMAGE:-${PROTO_IMAGE:-docker.io/library/debian:stable-slim}}
+CPUS=${ARAH_SANDBOX_CPUS:-${PROTO_CPUS:-2}}
+MEMORY=${ARAH_SANDBOX_MEMORY:-${PROTO_MEMORY:-4g}}
+PIDS=${ARAH_SANDBOX_PIDS:-${PROTO_PIDS:-256}}
+LOG_BYTES=${ARAH_SANDBOX_LOG_BYTES:-65536}
+
 log_section "baseline"
-log_detail "workdir: $WORKDIR"
+log_detail "workdir: $WORKDIR  cwd: $REL_CWD"
 log_detail "log:     $LOG_FILE"
-log_detail "timeout: ${HARD}s   os: $UNAME_S"
+log_detail "image:   $IMAGE"
+log_detail "timeout: ${HARD}s   network: $SBX_NETWORK   sandbox knobs: cpus=$CPUS mem=$MEMORY pids=$PIDS"
 
-# Read setup commands once into an array so we can summarize cleanly.
-SETUP_CMDS=()
-while IFS= read -r cmd; do
-  [[ -z "$cmd" ]] && continue
-  SETUP_CMDS+=("$cmd")
-done < <(jq -r '.environment.setupCommands[]? // empty' "$PROTOCOL")
+# Read setup commands. Each entry is either a JSON string (legacy free-form
+# shell) or a structured object {kind: "...", args: [...]}. Structured kinds
+# are mapped to a fixed argv to keep the protocol from injecting flags into
+# host tools.
+SETUP_ARGV_FILE=$(mktemp)
+trap 'rm -f "$SETUP_ARGV_FILE"' EXIT
 
-run_setup() {
-  local n=${#SETUP_CMDS[@]}
-  if [[ "$n" -eq 0 ]]; then
-    return 0
-  fi
-  log_section "baseline · setup ($n command$([[ $n -eq 1 ]] || echo s))"
-  local i=0
-  if [[ "$n" -gt 5 ]]; then
-    log_detail "(verbose; collapsed — full output streams below)"
-  fi
-  for cmd in "${SETUP_CMDS[@]}"; do
-    i=$((i + 1))
-    if [[ "$n" -le 5 ]]; then
-      log_detail "[$i/$n] $cmd"
-    fi
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-      continue
-    fi
-    (cd "$WORKDIR" && bash -lc "$cmd")
-  done
+python3 - "$PROTOCOL" >"$SETUP_ARGV_FILE" <<'PY'
+import json
+import shlex
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as f:
+    proto = json.load(f)
+items = (proto.get("environment") or {}).get("setupCommands") or []
+
+ALLOWED = {
+    "pip":   ["python3", "-m", "pip"],
+    "uv":    ["uv"],
+    "npm":   ["npm"],
+    "pnpm":  ["pnpm"],
+    "yarn":  ["yarn"],
+    "cargo": ["cargo"],
+    "make":  ["make"],
+    "bash":  ["bash", "-c"],
+    "sh":    ["sh", "-c"],
+}
+
+for entry in items:
+    if isinstance(entry, str):
+        # Legacy free-form shell — wrap in `bash -c` so it still routes
+        # through the sandbox without re-evaluating on the host.
+        argv = ["bash", "-c", entry]
+    elif isinstance(entry, dict):
+        kind = entry.get("kind")
+        args = entry.get("args") or []
+        if kind not in ALLOWED:
+            print(f"ERR unknown setupCommand kind: {kind!r}", file=sys.stderr)
+            sys.exit(2)
+        if not isinstance(args, list) or not all(isinstance(a, str) for a in args):
+            print(f"ERR setupCommand.args must be list[str] (kind={kind})", file=sys.stderr)
+            sys.exit(2)
+        argv = ALLOWED[kind] + args
+    else:
+        print(f"ERR setupCommand entries must be str or object, got {type(entry).__name__}", file=sys.stderr)
+        sys.exit(2)
+    print(json.dumps(argv))
+PY
+
+# Each line in $SETUP_ARGV_FILE is a JSON array — one command argv per line.
+
+run_in_sandbox() {
+  bash "$SCRIPT_DIR/run_in_sandbox.sh" \
+    --workdir "$WORKDIR" \
+    --cwd "$REL_CWD" \
+    --timeout "$HARD" \
+    --cpus "$CPUS" \
+    --memory "$MEMORY" \
+    --pids "$PIDS" \
+    --network "$SBX_NETWORK" \
+    --image "$IMAGE" \
+    -- "$@"
 }
 
 extract_metric() {
   local log_path=$1
-  python3 - "$PROTOCOL" "$log_path" <<'PY'
+  python3 - "$PROTOCOL" "$log_path" "$LOG_BYTES" <<'PY'
 import json, re, sys
 
-proto_path, log_path = sys.argv[1], sys.argv[2]
+proto_path, log_path, tail_bytes = sys.argv[1], sys.argv[2], int(sys.argv[3])
 with open(proto_path, encoding="utf-8") as f:
     proto = json.load(f)
 ext = proto["measurement"]["primaryMetric"]["extract"]
 kind = ext.get("kind")
 pattern = ext.get("pattern") or ""
-with open(log_path, encoding="utf-8", errors="replace") as f:
-    text = f.read()
+with open(log_path, "rb") as f:
+    f.seek(0, 2)
+    size = f.tell()
+    f.seek(max(0, size - tail_bytes), 0)
+    text = f.read().decode("utf-8", errors="replace")
 if kind != "regex":
     print("extract kind is not regex; inspect log manually.", file=sys.stderr)
     sys.exit(2)
 m = re.search(pattern, text, re.MULTILINE)
 if not m:
-    print("primary metric regex did not match log.", file=sys.stderr)
+    print("primary metric regex did not match log tail.", file=sys.stderr)
     sys.exit(3)
 val = m.group(1) if m.lastindex else m.group(0)
 print(val)
@@ -175,24 +216,56 @@ PY
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
   log_section "baseline · dry run"
-  if [[ ${#SETUP_CMDS[@]} -gt 0 ]]; then
-    log_detail "would run ${#SETUP_CMDS[@]} setup command(s) from protocol"
-  fi
-  log_detail "would run: (cd \"$WORKDIR\" && timeout ${HARD}s bash -lc <main>) |& tee \"$LOG_FILE\""
-  log_detail "main: $MAIN_CMD"
+  setup_count=$(grep -c '' "$SETUP_ARGV_FILE" || true)
+  log_detail "would run $setup_count setup command(s) inside sandbox"
+  log_detail "would run main command inside sandbox: $MAIN_CMD"
   exit 0
 fi
 
-run_setup
+mkdir -p "$(dirname "$LOG_FILE")"
+
+# Setup pass — never tee to LOG_FILE; setup output is informational only and the
+# metric regex must match the main command's stdout.
+if [[ -s "$SETUP_ARGV_FILE" ]]; then
+  setup_count=$(grep -c '' "$SETUP_ARGV_FILE" || true)
+  log_section "baseline · setup ($setup_count command(s))"
+  i=0
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    i=$((i + 1))
+    log_detail "[$i/$setup_count] $line"
+    # Each line is a JSON array; reparse into an array.
+    mapfile -t ARGV < <(python3 -c 'import json,sys; [print(x) for x in json.loads(sys.argv[1])]' "$line")
+    set +e
+    run_in_sandbox "${ARGV[@]}"
+    rc=$?
+    set -e
+    if [[ "$rc" -ne 0 ]]; then
+      log_fail "setup command failed (exit $rc): $line"
+      exit "$rc"
+    fi
+  done < "$SETUP_ARGV_FILE"
+fi
 
 log_section "baseline · run (timeout ${HARD}s)"
 log_detail "main: $MAIN_CMD"
 log_detail "(streaming to $LOG_FILE)"
 
 set +e
-cd "$WORKDIR" && run_with_timeout "$HARD" bash -lc "$MAIN_CMD" 2>&1 | tee "$LOG_FILE"
+run_in_sandbox bash -c "$MAIN_CMD" 2>&1 | tee "$LOG_FILE"
 EXIT_MAIN=${PIPESTATUS[0]}
 set -e
+
+# Truncate captured log if it exploded (defense-in-depth; sandbox already caps).
+if command -v stat >/dev/null 2>&1; then
+  size=$(wc -c <"$LOG_FILE" || echo 0)
+  if [[ "$size" -gt $((LOG_BYTES * 32)) ]]; then
+    tmp=$(mktemp)
+    tail -c "$((LOG_BYTES * 16))" "$LOG_FILE" >"$tmp"
+    mv "$tmp" "$LOG_FILE"
+    log_detail "log truncated to last $((LOG_BYTES * 16)) bytes (was $size)"
+  fi
+fi
 
 log_section "baseline · result"
 METRIC=""

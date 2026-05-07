@@ -13,8 +13,18 @@ Run **unattended** mining against a finalized `protocol.json` and a **git checko
 
 - `protocol.json` with `schemaKind: protocol` and `meta.eligibility: eligible`.
 - `jq`, `git`, `bash`, `python3` on PATH.
-- Target repo checkout (or run `bootstrap_repo.sh` to clone from `meta.repo.cloneUrl`).
-- For on-chain mining, an EVM wallet in **`ARAH_PRIVATE_KEY`** before the loop starts. Scripts load `.env` from the current working directory; if the key is missing, ask the user to create `.env` with `ARAH_PRIVATE_KEY=0x...` and optional `ARAH_STAKE=1` (whole tokens; ProjectToken has `decimals() == 0`). Run **`check_wallet.py`** first so the miner can sign transactions, has native gas, and either has enough ProjectToken stake or enough native balance to buy the missing stake automatically.
+- A sandbox runtime: **`podman`** (preferred), **`docker`**, or **`bwrap`** (Linux). The harness refuses to execute protocol-supplied commands without one. Override with `ARAH_SANDBOX=none ARAH_SANDBOX_ALLOW_UNSAFE=1` only on disposable VMs.
+- Target repo checkout (or run `bootstrap_repo.sh` to clone from `meta.repo.cloneUrl`; the script enforces an https-only allowlist of git hosts).
+- For on-chain mining, an isolated mining wallet kept in a passphrase-encrypted **keystore** under `~/.autoresearch/wallets/<id>.json`:
+  ```bash
+  python3 scripts/wallet.py init --id project-42       # generates a fresh secp256k1 key
+  python3 scripts/wallet.py address --id project-42    # print the address; user funds it from their main wallet
+  ```
+  Scripts that send transactions take **`--wallet-id`** + **`--passphrase-file`** (or `ARAH_WALLET_PASSPHRASE`). They never read `ARAH_PRIVATE_KEY` and the keystore is decrypted only inside `wallet.py` itself, so the trial harness — which runs untrusted code inside the sandbox — cannot reach the key.
+
+  Then run **`check_wallet.py --wallet-id project-42 --token-address 0x…`** so the miner has native gas and either enough ProjectToken stake or enough native balance to buy the missing stake automatically.
+
+  > **Reward recipient:** keep `--reward-recipient` set to the user's main wallet (e.g. their MetaMask address). The mining keystore only ever holds gas + stake; rewards land in the user's main wallet, so a compromised mining key bounds the loss to one trial's stake + gas.
 
 ## Unattended mode
 
@@ -43,9 +53,18 @@ Run **unattended** mining against a finalized `protocol.json` and a **git checko
 | `ARAH_CHAIN_ID` | Override chain id (default **16602**). |
 | `ARAH_PROJECT_REGISTRY` / `ARAH_PROPOSAL_LEDGER` | Override contract addresses. |
 | `ARAH_METRIC_SCALE` | Integer scale for int256 ↔ float (match `createProject`; default **1000000**). |
-| `ARAH_PRIVATE_KEY` | Miner EVM key for **`check_wallet.py`** and **`submit_proposal.py`** (hex, no `0x` prefix accepted by eth-account either way). May be set in the shell or in `.env` in the current working directory. |
+| `ARAH_WALLET_HOME` | Override keystore dir (default `~/.autoresearch/wallets`). |
+| `ARAH_WALLET_PASSPHRASE` | Optional passphrase for non-interactive runs; prefer `--passphrase-file` so it's not in process env. |
 | `ARAH_PROJECT_ID` | On-chain **project id** for frontier sync; overrides **`miningLoop.onChainProjectId`** in `protocol.json` when set. |
 | `ARAH_STAKE` | Optional stake count in **whole** ProjectToken units (decimals==0). Defaults to **`1`** when absent — the contract only requires `stake > 0`. |
+| `ARAH_SANDBOX` | `auto` (default) / `podman` / `docker` / `bwrap` / `none`. |
+| `ARAH_SANDBOX_IMAGE` | Container image for podman/docker (default `docker.io/library/debian:stable-slim`). |
+| `ARAH_SANDBOX_CPUS` / `ARAH_SANDBOX_MEMORY` / `ARAH_SANDBOX_PIDS` | Per-trial resource caps. |
+| `ARAH_BOOTSTRAP_EXTRA_HOSTS` | Colon-separated extra hosts for `bootstrap_repo.sh`'s clone allowlist. |
+
+> **Removed:** `ARAH_PRIVATE_KEY` is no longer read by mining scripts. Migrate
+> any old `.env` files to a keystore (`scripts/wallet.py init`); the dotenv
+> loader explicitly skips `ARAH_PRIVATE_KEY` even if it's in `.env`.
 
 Install Python chain deps once: **`pip install -r requirements-chain.txt`** (e.g. in a venv).
 
@@ -94,7 +113,8 @@ Optional **AXL sidechat** writes miner-to-miner field notes to **`sidechat.jsonl
 | `scripts/bootstrap_from_registry.py` | Resolve by **`--project-id`** or **`--token-address`**, read `ProjectRegistry`, optionally download 0G artifacts, unpack the repo snapshot, initialize mining workspace, and write registry frontier state. |
 | `scripts/download_0g_artifacts.mjs` | Download protocol/repo/benchmark/baseline artifacts from 0G Storage root hashes and verify Merkle roots with the 0G SDK. |
 | `scripts/env_utils.py` | Load `.env` from the current working directory and provide the default stake. |
-| `scripts/check_wallet.py` | Preflight **`ARAH_PRIVATE_KEY`**, RPC, native gas balance, ProjectToken balance, allowance, and missing-stake buy quote. |
+| `scripts/wallet.py` | Mining wallet keystore: `init` / `address` / `status` / `sign` / `send` / `delete`. The only place a private key is decrypted. |
+| `scripts/check_wallet.py` | Preflight a wallet keystore: RPC, native gas balance, ProjectToken balance, allowance, and missing-stake buy quote. |
 | `scripts/run_trial.sh` | One harness run → `run_baseline.sh`, log under `runs/<trial_id>/stdout.log`. |
 | `scripts/submit_trial_proposal.py` | Archive committed trial code, pair it with the trial benchmark log, and send the on-chain proposal transaction automatically. |
 | `scripts/append_trial_record.py` | Append one validated JSON line to `trials.jsonl`. |
@@ -123,14 +143,16 @@ Run scripts from **`autoresearch-mine/scripts/`** (or invoke via absolute paths 
 
 ### 1. Wallet preflight for on-chain mining
 
-When the user provides a project token address or 0G project id, start by checking the wallet. The same wallet signs **`buy()`**, **`approve()`**, and **`submit()`** later.
+When the user provides a project token address or 0G project id, start by initializing (or reusing) an isolated mining wallet, then check it. The same keystore signs **`buy()`**, **`approve()`**, and **`submit()`** later — never `ARAH_PRIVATE_KEY`.
 
 ```bash
-# .env in the current working directory:
-# ARAH_PRIVATE_KEY=0x...
-# ARAH_STAKE=1
+# One-time setup:
+python3 ./wallet.py init --id project-42
+python3 ./wallet.py address --id project-42        # fund this address from the user's main wallet
 
+# Preflight:
 python3 ./check_wallet.py \
+  --wallet-id project-42 \
   --token-address 0xProjectTokenAddress
 # or: --project-id "${ARAH_PROJECT_ID:?}"
 ```
@@ -217,13 +239,18 @@ After any trial beats the current registry best, publish a proposal with the sam
 
 ```bash
 python3 ./submit_trial_proposal.py \
+  --wallet-id project-42 \
   --token-address 0xProjectTokenAddress \
   --repo-root /path/to/repo \
   --trial-id <trial_id> \
   --claimed-metric 1.23 \
-  --reward-recipient 0xYourAddress \
+  --reward-recipient 0xUserMainWalletAddress \
   --auto-buy
 ```
+
+`--reward-recipient` should be the user's main wallet, not the mining wallet:
+that way mining-key compromise can only steal one trial's worth of stake + gas,
+not accumulated rewards.
 
 Use **`--print-only`** to dump resolved args without RPC; **`--dry-run`** to print unsigned txs without sending.
 

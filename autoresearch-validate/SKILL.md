@@ -12,9 +12,10 @@ Operate an **unattended verifier** against **`ProposalLedger`** on 0G Galileo (o
 ## Prerequisites
 
 - `jq`, `bash`, `python3` on PATH (harness); `python3 -m pip install -r requirements-chain.txt` for RPC scripts.
+- A sandbox runtime — **`podman`** (preferred), **`docker`**, or **`bwrap`**. Verifiers re-run untrusted miner code, so the harness refuses to execute it without a sandbox unless `ARAH_SANDBOX=none ARAH_SANDBOX_ALLOW_UNSAFE=1` is set explicitly (do not do this in production).
 - **`VerifierRegistry.isVerifier(your_address)`** must be true on-chain.
-- **`ARAH_PRIVATE_KEY`** for transactions (`claimReview`, `approve`, `reject`, `releaseReview`, `expire`).
-- **Exactly one** of **`ARAH_ARTIFACT_INDEX`** (local JSON file) or **`ARAH_ARTIFACT_INDEX_URL`** (HTTP GET) — maps each **`codeHash`** to downloadable artifacts (see [`schemas/artifact_index.schema.json`](schemas/artifact_index.schema.json)).
+- A passphrase-encrypted **verifier wallet keystore**: `python3 scripts/wallet.py init --id verifier-1`. All settlement scripts (`claim_review.py`, `finalize_approve.py`, `finalize_reject.py`, `release_review.py`, `expire_proposal.py`, `run_validate_loop.py`) take **`--wallet-id`** + **`--passphrase-file`** (or `ARAH_WALLET_PASSPHRASE`). They do **not** read `ARAH_PRIVATE_KEY`.
+- **Exactly one** of **`ARAH_ARTIFACT_INDEX`** (local JSON file) or **`ARAH_ARTIFACT_INDEX_URL`** (HTTP GET) — maps each **`codeHash`** to downloadable artifacts (see [`schemas/artifact_index.schema.json`](schemas/artifact_index.schema.json)). `schemaVersion: "2"` lets index entries declare `sandbox_image_digest` and `network_policy_used`; the validator pins the harness to those exact values for the run, eliminating false rejects from sandbox / network drift between miner and verifier.
 
 ## Unattended rules
 
@@ -26,9 +27,10 @@ Operate an **unattended verifier** against **`ProposalLedger`** on 0G Galileo (o
 
 ### Required for settlement
 
-| Variable | Purpose |
+| Variable / argument | Purpose |
 |----------|---------|
-| `ARAH_PRIVATE_KEY` | Verifier wallet (hex) |
+| `--wallet-id <id>` (CLI) | Verifier wallet keystore id from `scripts/wallet.py init` |
+| `--passphrase-file <path>` (CLI) or `ARAH_WALLET_PASSPHRASE` | Passphrase source for the keystore |
 | `ARAH_ARTIFACT_INDEX` **or** `ARAH_ARTIFACT_INDEX_URL` | Artifact manifest (see schema) |
 
 ### Chain overrides (same family as mine)
@@ -100,7 +102,10 @@ Initialize with **`scripts/init_verify_workspace.sh <repo_root>`**.
 4. **Protocol hash**: `SHA-256(protocol.json)` vs `ProjectRegistry.getProject(projectId).protocolHash` unless skipped → mismatch → **`claimReview` + `reject`** (fraud).
 5. Else **`claimReview`** → **`verify_static_gates`** → **`run_verify_trial`**.
 6. Parse metric; compare scaled int to on-chain **`claimedAggregateScore`** (strict equality).
-7. Match → **`approve`** with **metricsHash = SHA-256(harness stdout log)**. Mismatch / harness fail / static fail → **`reject`** with evidence file as metrics log.
+7. Outcomes:
+   - **Match** → **`approve`** with `metricsHash = SHA-256(harness stdout log)`.
+   - **Static-gate fail / metric mismatch / metric encode fail** → **`reject`** with evidence file as metrics log (slashing — these are unambiguous miner-side faults).
+   - **Harness exit ≠ 0 / metric not parseable from log** → **`releaseReview`** (NOT reject). These signals are ambiguous: they could be miner-side, but they could also be verifier-side (no sandbox runtime, image divergence, `networkPolicy=full` without `ARAH_ALLOW_FULL_NETWORK=1`). Slashing on those signals is unsafe; let another verifier try. If every verifier fails, the proposal eventually expires.
 
 ## Script exit codes (selected)
 

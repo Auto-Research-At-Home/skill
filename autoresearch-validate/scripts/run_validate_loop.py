@@ -2,7 +2,7 @@
 """
 Unattended verifier driver: resolve artifacts → protocol hash → claim → static gates → harness → approve/reject.
 
-Requires: ARAH_PRIVATE_KEY, exactly one of ARAH_ARTIFACT_INDEX or ARAH_ARTIFACT_INDEX_URL, RPC env from chain_config.
+Requires: --wallet-id (verifier keystore from scripts/wallet.py), exactly one of ARAH_ARTIFACT_INDEX or ARAH_ARTIFACT_INDEX_URL, RPC env from chain_config.
 """
 from __future__ import annotations
 
@@ -84,8 +84,18 @@ def process_one(
     claimable: set[int],
     metric_scale: int,
     dry_run: bool,
+    wallet_args: list[str] | None = None,
+    recently_released: set[int] | None = None,
 ) -> str:
-    """Returns result: skipped | approved | rejected | operational_failure."""
+    """Returns result: skipped | approved | rejected | released | operational_failure.
+
+    `released` means the verifier returned the proposal to claimable status
+    via ProposalLedger.releaseReview(...) instead of rejecting it. Used for
+    ambiguous failures (harness or metric-parse) where the miner is not
+    obviously fraudulent and the failure could be on the verifier's side
+    (missing sandbox runtime, image mismatch, networkPolicy=full without
+    ARAH_ALLOW_FULL_NETWORK, etc.). Slashing on those signals is unsafe.
+    """
     prop = ledger.functions.getProposal(proposal_id).call()
     project_id = prop[0]
     code_hash = Web3.to_hex(prop[3])
@@ -122,9 +132,8 @@ def process_one(
         record("skipped", "not_claimable_status", stdout_log_path="", error=f"status={status}")
         return "skipped"
 
-    key = os.environ.get("ARAH_PRIVATE_KEY")
-    if not key and not dry_run:
-        print("ARAH_PRIVATE_KEY required", file=sys.stderr)
+    if not dry_run and not wallet_args:
+        print("verifier wallet required: pass --wallet-id (and --passphrase-file)", file=sys.stderr)
         sys.exit(1)
 
     paths: dict[str, str] | None = None
@@ -158,6 +167,8 @@ def process_one(
 
     def ledger_tx(script: str, extra: list[str]) -> bool:
         cmd = [sys.executable, str(SCRIPT_DIR / script)] + extra
+        if wallet_args:
+            cmd.extend(wallet_args)
         if dry_run:
             cmd.append("--dry-run")
         r = subprocess.run(cmd, capture_output=True, text=True)
@@ -202,31 +213,47 @@ def process_one(
             record("rejected", "static_gate_failed", stdout_log_path="", error=sg.stderr.strip())
             return "rejected"
 
-        rt = run_cmd(
+        # Apply reproducibility hints from the artifact index, if any.
+        # These override the harness defaults FOR THIS RUN ONLY by being
+        # injected into the child env; the main process env is unchanged.
+        run_env = dict(os.environ)
+        if paths.get("sandbox_image_digest"):
+            run_env["ARAH_SANDBOX_IMAGE"] = paths["sandbox_image_digest"]
+        if paths.get("network_policy_used") == "full":
+            run_env["ARAH_ALLOW_FULL_NETWORK"] = run_env.get("ARAH_ALLOW_FULL_NETWORK", "1")
+        rt = subprocess.run(
             ["bash", str(SCRIPT_DIR / "run_verify_trial.sh"), str(protocol_path), str(extract_root), review_id],
             cwd=extract_root,
+            text=True,
+            capture_output=True,
+            env=run_env,
         )
         log_path = extract_root / ".autoresearch/verify/runs" / review_id / "stdout.log"
         if rt.returncode != 0:
-            ev = write_evidence(rt.stderr or rt.stdout or "run_verify_trial failed")
-            if not ledger_tx("finalize_reject.py", ["--proposal-id", str(proposal_id), "--metrics-log-file", str(ev)]):
-                record("operational_failure", "finalize_reject_failed", stdout_log_path=str(log_path), error="reject after harness failed")
-                ev.unlink(missing_ok=True)
+            # Ambiguous: could be miner code crashing OR verifier env mismatch
+            # (no sandbox runtime, wrong image, networkPolicy=full not opted in).
+            # Release for re-review instead of slashing.
+            if not ledger_tx("release_review.py", ["--proposal-id", str(proposal_id)]):
+                record("operational_failure", "release_review_failed", stdout_log_path=str(log_path), error="release after harness failed")
                 return "operational_failure"
-            ev.unlink(missing_ok=True)
-            record("rejected", "harness_failed", stdout_log_path=str(log_path), error=rt.stderr.strip())
-            return "rejected"
+            if recently_released is not None:
+                recently_released.add(proposal_id)
+            record("released", "harness_failed", stdout_log_path=str(log_path), error=rt.stderr.strip())
+            return "released"
 
         pm = run_cmd([sys.executable, str(SCRIPT_DIR / "parse_baseline_metric.py"), str(log_path)])
         if pm.returncode != 0:
-            ev = write_evidence("parse_baseline_metric failed: " + (pm.stderr or ""))
-            if not ledger_tx("finalize_reject.py", ["--proposal-id", str(proposal_id), "--metrics-log-file", str(ev)]):
-                record("operational_failure", "finalize_reject_failed", stdout_log_path=str(log_path), error="reject after parse failed")
-                ev.unlink(missing_ok=True)
+            # Same rationale as harness_failed: parse failure can be the
+            # miner forgetting to print BASELINE_METRIC, but it can equally
+            # be a verifier-side env divergence that crashed the run before
+            # the metric line. Release; another verifier may succeed.
+            if not ledger_tx("release_review.py", ["--proposal-id", str(proposal_id)]):
+                record("operational_failure", "release_review_failed", stdout_log_path=str(log_path), error="release after parse failed")
                 return "operational_failure"
-            ev.unlink(missing_ok=True)
-            record("rejected", "metric_parse_failed", stdout_log_path=str(log_path), error=pm.stderr.strip())
-            return "rejected"
+            if recently_released is not None:
+                recently_released.add(proposal_id)
+            record("released", "metric_parse_failed", stdout_log_path=str(log_path), error=pm.stderr.strip())
+            return "released"
 
         metric_s = pm.stdout.strip()
         try:
@@ -299,11 +326,18 @@ def main() -> int:
     ap.add_argument("--proposal-id", type=int, help="Process a single proposal id (otherwise scans claimable ids)")
     ap.add_argument("--dry-run", action="store_true", help="Print txs only where supported")
     ap.add_argument("--max-proposals", type=int, default=int(os.environ.get("VALIDATE_MAX_PROPOSALS", "50")))
+    ap.add_argument("--wallet-id", help="Verifier wallet keystore id (scripts/wallet.py).")
+    ap.add_argument("--passphrase-file", help="Path to a file with the wallet passphrase.")
     args = ap.parse_args()
 
     dry_run = args.dry_run
     metric_scale = int(os.environ.get("ARAH_METRIC_SCALE", "1000000"))
     claimable = load_claimable()
+    wallet_args: list[str] = []
+    if args.wallet_id:
+        wallet_args.extend(["--wallet-id", args.wallet_id])
+    if args.passphrase_file:
+        wallet_args.extend(["--passphrase-file", args.passphrase_file])
 
     record_home = Path(os.environ.get("ARAH_VERIFY_RECORD_ROOT", str(ROOT)))
     subprocess.run(["bash", str(SCRIPT_DIR / "init_verify_workspace.sh"), str(record_home)], check=True)
@@ -331,11 +365,26 @@ def main() -> int:
             if st in claimable:
                 ids.append(pid)
 
+    recently_released: set[int] = set()
     done = 0
     for pid in ids:
         if done >= args.max_proposals:
             break
-        process_one(pid, w3, ledger, registry, claimable, metric_scale, dry_run)
+        if pid in recently_released:
+            # Don't immediately reclaim a proposal this verifier just released;
+            # let another verifier in the network try first.
+            continue
+        process_one(
+            pid,
+            w3,
+            ledger,
+            registry,
+            claimable,
+            metric_scale,
+            dry_run,
+            wallet_args=wallet_args,
+            recently_released=recently_released,
+        )
         done += 1
     return 0
 

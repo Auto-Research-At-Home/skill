@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -20,18 +19,30 @@ from chain_config import (
     load_deployment,
     verifier_registry_address,
 )
+from wallet import keystore_path  # noqa: E402
 
 try:
-    from eth_account import Account
     from web3 import Web3
 except ImportError:
     print("Install chain extras: python3 -m pip install -r requirements-chain.txt", file=sys.stderr)
     raise SystemExit(1)
 
 
+def address_from_keystore(wallet_id: str) -> str:
+    path = keystore_path(wallet_id)
+    if not path.is_file():
+        raise FileNotFoundError(f"keystore not found: {path}")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    addr = data.get("address")
+    if not addr:
+        raise ValueError(f"keystore at {path} has no address field")
+    return ("0x" + addr) if not str(addr).startswith("0x") else str(addr)
+
+
 def main() -> int:
     p = argparse.ArgumentParser()
-    p.add_argument("--address", help="Verifier address (default: derived from ARAH_PRIVATE_KEY)")
+    p.add_argument("--address", help="Verifier address (default: read from --wallet-id keystore).")
+    p.add_argument("--wallet-id", help="Verifier wallet keystore id (scripts/wallet.py).")
     args = p.parse_args()
 
     deployment, deployment_path = load_deployment()
@@ -42,12 +53,15 @@ def main() -> int:
 
     if args.address:
         addr = args.address
-    else:
-        key = os.environ.get("ARAH_PRIVATE_KEY")
-        if not key:
-            print("Provide --address or ARAH_PRIVATE_KEY", file=sys.stderr)
+    elif args.wallet_id:
+        try:
+            addr = address_from_keystore(args.wallet_id)
+        except (FileNotFoundError, ValueError) as e:
+            print(str(e), file=sys.stderr)
             return 1
-        addr = Account.from_key(key).address
+    else:
+        print("Provide --address or --wallet-id", file=sys.stderr)
+        return 1
 
     w3 = Web3(Web3.HTTPProvider(rpc))
     if not w3.is_connected():

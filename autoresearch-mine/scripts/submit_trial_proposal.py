@@ -15,10 +15,11 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+from _git_safe import GIT_SAFE_ENV  # noqa: E402
 from env_utils import env_or_default_stake, load_dotenv_from_cwd  # noqa: E402
 
 
-def run(cmd: list[str], *, cwd: Path | None = None, capture: bool = False) -> subprocess.CompletedProcess[str]:
+def run(cmd: list[str], *, cwd: Path | None = None, capture: bool = False, git: bool = False) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         cmd,
         cwd=str(cwd) if cwd else None,
@@ -26,21 +27,22 @@ def run(cmd: list[str], *, cwd: Path | None = None, capture: bool = False) -> su
         text=True,
         stdout=subprocess.PIPE if capture else None,
         stderr=subprocess.STDOUT if capture else None,
+        env=GIT_SAFE_ENV if git else None,
     )
 
 
 def git_clean_tracked(repo_root: Path) -> bool:
-    result = run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=repo_root, capture=True)
+    result = run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=repo_root, capture=True, git=True)
     return result.stdout.strip() == ""
 
 
 def git_head(repo_root: Path) -> str:
-    return run(["git", "rev-parse", "HEAD"], cwd=repo_root, capture=True).stdout.strip()
+    return run(["git", "rev-parse", "HEAD"], cwd=repo_root, capture=True, git=True).stdout.strip()
 
 
 def create_code_archive(repo_root: Path, output: Path) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
-    run(["git", "archive", "--format=tar", "--output", str(output), "HEAD"], cwd=repo_root)
+    run(["git", "archive", "--format=tar", "--output", str(output), "HEAD"], cwd=repo_root, git=True)
 
 
 def main() -> int:
@@ -57,6 +59,8 @@ def main() -> int:
     parser.add_argument("--claimed-metric", required=True)
     parser.add_argument("--stake", default=env_or_default_stake())
     parser.add_argument("--reward-recipient", required=True)
+    parser.add_argument("--wallet-id", required=True, help="Mining wallet keystore id (scripts/wallet.py).")
+    parser.add_argument("--passphrase-file", help="Path to a file with the wallet passphrase.")
     parser.add_argument("--metric-scale", type=int, default=int(os.environ.get("ARAH_METRIC_SCALE", "1000000")))
     parser.add_argument("--buy-value-wei", default="0")
     parser.add_argument("--auto-buy", action=argparse.BooleanOptionalAction, default=True)
@@ -81,6 +85,8 @@ def main() -> int:
         cmd = [
             sys.executable,
             str(SCRIPT_DIR / "submit_proposal.py"),
+            "--wallet-id",
+            args.wallet_id,
             "--code-file",
             str(code_tar),
             "--benchmark-log-file",
@@ -96,6 +102,8 @@ def main() -> int:
             "--buy-value-wei",
             args.buy_value_wei,
         ]
+        if args.passphrase_file:
+            cmd.extend(["--passphrase-file", args.passphrase_file])
         if args.project_id is not None:
             cmd.extend(["--project-id", str(args.project_id)])
         if args.token_address:

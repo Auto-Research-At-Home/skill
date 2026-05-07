@@ -48,6 +48,15 @@ Scoring is **qualitative**; all criteria must be satisfied for **`eligible`**. P
 - `measurement.baselinePolicy.sameDataSnapshot` is achievable (pinned data, revision, or local cache path).
 - Comparisons across experimenters assume **same protocol bundle id** (`meta.protocolBundleId`) and compatible hardware class.
 
+### E6 — Reproducible sandbox image (protocolVersion 1.1+)
+
+- `environment.sandbox.image`, when present, **MUST** be digest-pinned: `name@sha256:<64hex>`. Tag-pinned references (`pytorch:2.3-cuda`) silently change content over time and break miner/verifier hash equality.
+- The image must contain every interpreter, compiler, and system package the protocol's `setupCommands` and `execution.command` rely on. The harness will refuse to install host-side dependencies; setup runs inside the sandbox using only what the image already has plus what the protocol's setupCommands fetch.
+- Light recommendation: prefer minimal, well-known base images (`python@sha256:…`, `nvidia/cuda@sha256:…`, `node@sha256:…`) over bespoke privately-hosted images, so verifiers without auth to a private registry can still reproduce.
+- For protocols that genuinely have no environment dependence (e.g. pure C with deterministic toolchain), `environment.sandbox.image` MAY be omitted; the harness falls back to a default. This is acceptable only when the metric is provably stable across reasonable bases.
+
+**Fail example for `eligible`:** `environment.sandbox.image: "pytorch/pytorch:latest"` — `latest` is not a stable identity. Either pin a digest or downgrade to `needs_harness` until one is chosen.
+
 ---
 
 ## Partial credit → `needs_harness`

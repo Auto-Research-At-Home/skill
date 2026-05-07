@@ -104,12 +104,22 @@ def resolve_artifacts(code_hash: str, benchmark_log_hash: str) -> dict[str, str]
     if hashlib.sha256(log_bytes).digest() != bytes.fromhex(bench_hash[2:]):
         raise ValueError("benchmark log SHA-256 does not match benchmarkLogHash")
 
-    return {
+    out: dict[str, str] = {
         "work_dir": str(tmp),
         "extract_root": str(extract_root),
         "tar_path": str(tar_path),
         "protocol_subpath": os.environ.get("ARAH_PROTOCOL_SUBPATH", ".autoresearch/publish/protocol.json"),
     }
+    # Optional reproducibility hints (artifact_index schemaVersion 2). The
+    # validate loop uses these to pin the verifier's sandbox to the same
+    # configuration the miner ran with.
+    img = entry.get("sandbox_image_digest")
+    if isinstance(img, str) and img:
+        out["sandbox_image_digest"] = img
+    pol = entry.get("network_policy_used")
+    if isinstance(pol, str) and pol:
+        out["network_policy_used"] = pol
+    return out
 
 
 def main() -> int:

@@ -18,8 +18,28 @@ DEFAULT_PERMIT = [
     "LICENSE.*",
     ".gitignore",
     "CONTRIBUTING*",
-    ".github/**",
+    ".github/ISSUE_TEMPLATE/**",
+    ".github/PULL_REQUEST_TEMPLATE*",
+    ".github/dependabot.yml",
     ".autoresearch/**",
+]
+
+# Always-rejected paths. Match BEFORE the protocol's forbidden/allowed/permit
+# lists are consulted, so a protocol cannot opt these in. These are paths that
+# can execute code on the verifier host or downstream CI, or that constitute a
+# secret-bearing surface.
+HARD_DENY = [
+    ".git/**",
+    ".github/workflows/**",
+    ".gitlab-ci.yml",
+    ".gitlab/**",
+    ".husky/**",
+    ".envrc",
+    ".envrc.*",
+    ".direnv/**",
+    ".vscode/tasks.json",
+    ".vscode/launch.json",
+    ".idea/runConfigurations/**",
 ]
 
 
@@ -79,6 +99,9 @@ def main() -> int:
 
     text_suffixes = {".py", ".sh", ".md", ".txt", ".c", ".h", ".cpp", ".cc", ".rs", ".toml", ".yaml", ".yml", ".json"}
     for rel, p in iter_files(root):
+        if match_any(rel, HARD_DENY):
+            print(f"hard-denied path: {rel}", file=sys.stderr)
+            return 3
         if match_any(rel, forbidden):
             print(f"forbidden path touched: {rel}", file=sys.stderr)
             return 3

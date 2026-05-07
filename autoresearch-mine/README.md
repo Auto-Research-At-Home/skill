@@ -2,17 +2,25 @@
 
 Mining starts from either a finalized local `protocol.json` plus repo checkout, or an on-chain 0G project id / ProjectToken address.
 
-For on-chain mining, put the miner key in `.env` in the current working directory or export it in the shell. `.env` is gitignored:
+For on-chain mining, create an isolated mining-wallet keystore (passphrase-encrypted, stored under `~/.autoresearch/wallets/<id>.json`). The skill never reads `ARAH_PRIVATE_KEY` and the keystore is decrypted only inside `wallet.py`, so the trial harness — which runs untrusted protocol code inside a podman/docker/bwrap sandbox — cannot reach the key.
 
 ```bash
-ARAH_PRIVATE_KEY=0x...
-ARAH_STAKE=1
+python3 scripts/wallet.py init --id project-42
+python3 scripts/wallet.py address --id project-42   # fund this address from the user's main wallet
+```
+
+Optional, in `.env` (gitignored), for non-interactive runs:
+
+```bash
+ARAH_STAKE=1                 # whole-token stake count (decimals==0); defaults to 1
+ARAH_WALLET_PASSPHRASE=…     # or pass --passphrase-file <path>
 ```
 
 Then run wallet preflight before trials:
 
 ```bash
 python3 scripts/check_wallet.py \
+  --wallet-id project-42 \
   --token-address 0xProjectTokenAddress
 ```
 
@@ -25,15 +33,16 @@ python3 scripts/bootstrap_from_registry.py \
   --download-artifacts
 ```
 
-When a trial beats the current on-chain best, submit with the same wallet immediately:
+When a trial beats the current on-chain best, submit with the keystore immediately. Set `--reward-recipient` to the user's *main* wallet, not the mining wallet — that way mining-key compromise can only steal one trial's stake + gas:
 
 ```bash
 python3 scripts/submit_trial_proposal.py \
+  --wallet-id project-42 \
   --token-address 0xProjectTokenAddress \
   --repo-root /path/to/repo \
   --trial-id <trial_id> \
   --claimed-metric 1.23 \
-  --reward-recipient 0xYourAddress \
+  --reward-recipient 0xUserMainWalletAddress \
   --auto-buy
 ```
 

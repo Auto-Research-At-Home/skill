@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Submit a mining proposal: resolve project token → optional buy → approve → ProposalLedger.submit."""
+"""Submit a mining proposal: resolve project token → optional buy → approve → ProposalLedger.submit.
+
+Signing is done via the keystore-backed mining wallet (scripts/wallet.py).
+This script never reads ARAH_PRIVATE_KEY from env or .env files.
+"""
 
 from __future__ import annotations
 
@@ -24,10 +28,10 @@ from chain_config import (
     project_registry_address,
     proposal_ledger_address,
 )
-from env_utils import env_or_default_stake, load_dotenv_from_cwd, missing_private_key_message
+from env_utils import env_or_default_stake, load_dotenv_from_cwd
+from wallet import decrypt_account, read_passphrase
 
 # Flat native-gas reserve for buy() + approve() + submit() on Galileo.
-# A few hundred k gas total at typical testnet gasPrice fits comfortably here.
 GAS_RESERVE_WEI = 5 * 10**15  # 0.005 OG
 
 
@@ -55,25 +59,14 @@ def parse_int256(text: str) -> int:
 
 
 def parse_budget_wei(text: str) -> int:
-    """Parse a budget string into wei.
-
-    Accepted forms (case-insensitive suffix):
-      "0.05og" / "0.05 OG"  -> 5e16 wei
-      "1000wei"             -> 1000 wei
-      "0x..."               -> hex wei
-      "12345"               -> integer wei
-    """
     s = text.strip().lower().replace(" ", "")
     if not s:
         raise ValueError("empty budget")
     if s.endswith("og"):
         amount = s[:-2]
-        if "." in amount:
-            whole, frac = amount.split(".", 1)
-        else:
-            whole, frac = amount, ""
+        whole, frac = (amount.split(".", 1) + [""])[:2] if "." in amount else (amount, "")
         whole_int = int(whole) if whole else 0
-        frac = frac[:18].ljust(18, "0")  # OG has 18 decimals
+        frac = frac[:18].ljust(18, "0")
         return whole_int * 10**18 + int(frac or "0")
     if s.endswith("wei"):
         return int(s[:-3])
@@ -125,14 +118,13 @@ def tx_summary(tx: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def load_chain_deps() -> tuple[Any, Any]:
+def load_chain_deps() -> Any:
     try:
-        from eth_account import Account
         from web3 import Web3
     except ImportError as e:
         print("Install chain extras: pip install -r requirements-chain.txt", file=sys.stderr)
         raise SystemExit(1) from e
-    return Account, Web3
+    return Web3
 
 
 def send_or_dump(w3: Any, account: Any, tx: dict[str, Any], dry_run: bool) -> Any:
@@ -176,73 +168,29 @@ def main() -> int:
     load_dotenv_from_cwd()
 
     p = argparse.ArgumentParser(description="Submit ProposalLedger.submit for a project (0G Galileo).")
+    p.add_argument("--wallet-id", help="Mining wallet keystore id (required unless --print-only).")
+    p.add_argument("--passphrase-file", help="Path to a file containing the wallet passphrase (or set ARAH_WALLET_PASSPHRASE).")
     p.add_argument("--project-id", type=int)
-    p.add_argument(
-        "--token-address",
-        type=str,
-        help="ProjectToken address; submit_proposal.py scans ProjectRegistry.tokenOf(...) to resolve project id.",
-    )
-    p.add_argument("--code-hash", type=str, help="bytes32 hex for repo/code snapshot")
-    p.add_argument("--code-file", type=Path, help="File to SHA-256 as codeHash (overrides --code-hash)")
+    p.add_argument("--token-address", type=str)
+    p.add_argument("--code-hash", type=str)
+    p.add_argument("--code-file", type=Path)
     p.add_argument("--benchmark-log-hash", type=str)
     p.add_argument("--benchmark-log-file", type=Path)
-    p.add_argument("--claimed-score-int256", type=str, help="Raw int256 string for claimedAggregateScore")
-    p.add_argument("--claimed-metric", type=str, help="Decimal metric; combined with --metric-scale")
-    p.add_argument(
-        "--metric-scale",
-        type=int,
-        default=int(os.environ.get("ARAH_METRIC_SCALE", "1000000")),
-    )
-    p.add_argument(
-        "--stake",
-        type=str,
-        default=env_or_default_stake(),
-        help=(
-            "Stake count in WHOLE ProjectToken units (decimals==0). "
-            "Defaults to ARAH_STAKE or 1. The contract only requires stake > 0."
-        ),
-    )
-    p.add_argument("--reward-recipient", type=str, required=True, help="address")
-    p.add_argument(
-        "--buy-value-wei",
-        type=str,
-        default="0",
-        help="Native wei to send with ProjectToken.buy() if balance < stake; auto-filled when --auto-buy is set.",
-    )
-    p.add_argument(
-        "--auto-buy",
-        action="store_true",
-        help="If token balance < stake, quote the missing stake with costBetween(...) and call buy() automatically.",
-    )
-    p.add_argument(
-        "--budget",
-        type=str,
-        default=None,
-        help=(
-            "Optional cap on --auto-buy curve cost. Accepts '0.05og', '<wei>wei', '0x..'. "
-            "Aborts before sending if the quoted cost exceeds this budget."
-        ),
-    )
-    p.add_argument(
-        "--buy-slippage-bps",
-        type=int,
-        default=100,
-        help="Extra wei margin for --auto-buy quote, in basis points (default: 100 = 1%).",
-    )
-    p.add_argument("--skip-buy", action="store_true", help="Do not call buy() even if balance is low")
-    p.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Print transactions only (still sets ARAH_PRIVATE_KEY for from/nonce when estimating).",
-    )
-    p.add_argument(
-        "--print-only",
-        action="store_true",
-        help="Resolve hashes/metrics only; no RPC and no wallet (no ARAH_PRIVATE_KEY).",
-    )
+    p.add_argument("--claimed-score-int256", type=str)
+    p.add_argument("--claimed-metric", type=str)
+    p.add_argument("--metric-scale", type=int, default=int(os.environ.get("ARAH_METRIC_SCALE", "1000000")))
+    p.add_argument("--stake", type=str, default=env_or_default_stake())
+    p.add_argument("--reward-recipient", type=str, required=True)
+    p.add_argument("--buy-value-wei", type=str, default="0")
+    p.add_argument("--auto-buy", action="store_true")
+    p.add_argument("--budget", type=str, default=None)
+    p.add_argument("--buy-slippage-bps", type=int, default=100)
+    p.add_argument("--skip-buy", action="store_true")
+    p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--print-only", action="store_true",
+                   help="Resolve hashes/metrics only; no RPC and no wallet.")
     args = p.parse_args()
 
-    key = os.environ.get("ARAH_PRIVATE_KEY")
     if args.project_id is None and not args.token_address:
         p.error("provide --project-id or --token-address")
     if args.buy_slippage_bps < 0:
@@ -292,14 +240,17 @@ def main() -> int:
         )
         return 0
 
-    if not key:
-        print(missing_private_key_message() + " Use --print-only for local hash/metric checks.", file=sys.stderr)
-        return 1
+    if not args.wallet_id:
+        p.error("--wallet-id is required (use scripts/wallet.py init --id <id>)")
 
     try:
-        Account, Web3 = load_chain_deps()
-        account = Account.from_key(key)
+        passphrase = read_passphrase(args)
+        account = decrypt_account(args.wallet_id, passphrase)
         owner = account.address
+        passphrase = "\x00" * len(passphrase)
+        del passphrase
+
+        Web3 = load_chain_deps()
         reward = Web3.to_checksum_address(args.reward_recipient)
 
         deployment, deployment_path = load_deployment()
@@ -308,7 +259,7 @@ def main() -> int:
         cid = chain_id(deployment)
         registry_addr = project_registry_address(deployment)
         ledger_addr = proposal_ledger_address(deployment)
-    except (OSError, ValueError) as e:
+    except (OSError, ValueError, FileNotFoundError) as e:
         print(str(e), file=sys.stderr)
         return 1
 
@@ -336,7 +287,6 @@ def main() -> int:
     nonce = w3.eth.get_transaction_count(owner)
     balance = int(token.functions.balanceOf(owner).call())
 
-    # Read live token params and assert decimals == 0 before any quoting.
     decimals = int(token.functions.decimals().call())
     base_price = int(token.functions.basePrice().call())
     slope = int(token.functions.slope().call())
@@ -351,14 +301,14 @@ def main() -> int:
                 "totalSupply": str(total_supply),
                 "ownerTokenBalance": str(balance),
                 "stakeTokens": str(stake),
+                "wallet": owner,
             },
             indent=2,
         )
     )
     if decimals != 0:
         print(
-            f"refusing to size stake: ProjectToken decimals={decimals}, expected 0. "
-            "submit_proposal.py treats --stake as a whole-token count.",
+            f"refusing to size stake: ProjectToken decimals={decimals}, expected 0.",
             file=sys.stderr,
         )
         return 1
@@ -368,12 +318,8 @@ def main() -> int:
     if balance < stake and not args.skip_buy:
         if args.auto_buy:
             missing = stake - balance
-            # Off-chain quote first (formula mirror), then cross-check with the
-            # contract's view function. They must agree exactly.
             quoted_local = cost_between(base_price, slope, total_supply, total_supply + missing)
-            quoted_chain = int(
-                token.functions.costBetween(total_supply, total_supply + missing).call()
-            )
+            quoted_chain = int(token.functions.costBetween(total_supply, total_supply + missing).call())
             if quoted_local != quoted_chain:
                 print(
                     f"bonding-curve formula mismatch: local={quoted_local} chain={quoted_chain}",
@@ -397,9 +343,7 @@ def main() -> int:
                 shortfall = buy_wei - available
                 print(
                     f"insufficient native balance for --auto-buy: need additional "
-                    f"{format_og(shortfall)} OG (curve {format_og(buy_wei)} + reserve "
-                    f"{format_og(GAS_RESERVE_WEI)}, have {format_og(native_balance)}). "
-                    "Lower --stake or top up the wallet.",
+                    f"{format_og(shortfall)} OG. Lower --stake or top up the wallet.",
                     file=sys.stderr,
                 )
                 return 1
@@ -418,12 +362,7 @@ def main() -> int:
             )
             return 1
         buy_tx = token.functions.buy().build_transaction(
-            {
-                "from": owner,
-                "value": buy_wei,
-                "nonce": nonce,
-                "chainId": cid,
-            }
+            {"from": owner, "value": buy_wei, "nonce": nonce, "chainId": cid}
         )
         print(f"buy() value={format_og(buy_wei)} OG (msg.value={buy_wei} wei) …")
         send_or_dump(w3, account, buy_tx, args.dry_run)
