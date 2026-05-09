@@ -1,0 +1,27 @@
+{
+  "network": {
+    "cluster": "devnet",
+    "rpcUrl": "https://api.devnet.solana.com",
+    "defaultCluster": "devnet",
+    "rpcUrls": {
+      "localnet": "http://127.0.0.1:8899",
+      "devnet": "https://api.devnet.solana.com",
+      "testnet": "https://api.testnet.solana.com",
+      "mainnet-beta": "https://api.mainnet-beta.solana.com"
+    }
+  },
+  "programs": {
+    "OpenResearch": {
+      "programId": "ACfzPQJkUJ74bdnmvV6FmB8Me3s1cPA3ayWjt2vHRsv3",
+      "idl": null,
+      "note": "Copy target/idl/open_research.json here or pass --idl to scripts/publish_project_solana.mjs after the Anchor program is built."
+    },
+    "TokenMetadata": {
+      "programId": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
+    }
+  },
+  "storage": {
+    "artifactLayer": "0G Storage",
+    "deployment": "../0g-galileo-testnet/deployment.json"
+  }
+}
