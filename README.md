@@ -229,7 +229,7 @@ The emitted `ProjectCreated` event returns the canonical `projectId` and project
 
 ### Solana OpenResearch Program
 
-The Solana migration path keeps 0G Storage for project artifacts, but replaces EVM registry/token addresses with a Solana program id plus PDAs and SPL Token accounts.
+The Solana path stores project artifacts on Irys and replaces EVM registry/token addresses with a Solana program id plus PDAs and SPL Token accounts.
 
 | Field | Value |
 |---|---|
@@ -248,13 +248,14 @@ NEXT_PUBLIC_SOLANA_RPC_URL=https://api.devnet.solana.com
 NEXT_PUBLIC_OPEN_RESEARCH_PROGRAM_ID=ACfzPQJkUJ74bdnmvV6FmB8Me3s1cPA3ayWjt2vHRsv3
 ```
 
-Copy the Anchor IDL into the frontend, call `initialize` once if it has not
+Use the bundled full Anchor IDL from `idl/open_research.json` or
+`autoresearch-create/contracts/solana-open-research/open_research.json`, call `initialize` once if it has not
 already been called, and add verifiers with the authority wallet. Client code
 should derive PDAs from the program id, use `PublicKey` for addresses, pass
 `bytes32` values as exactly 32 bytes, and treat project tokens as SPL Token mints
 with `decimals = 0`.
 
-Dry-run a Solana publish plan with 0G artifact roots:
+Dry-run a Solana publish plan with Irys artifact hashes:
 
 ```bash
 node autoresearch-create/scripts/publish_project_solana.mjs \
@@ -270,18 +271,19 @@ node autoresearch-create/scripts/publish_project_solana.mjs \
   --miner-pool-cap 21000000 \
   --creator <solana-pubkey> \
   --project-id 0 \
-  --upload-artifacts-to-0g \
+  --upload-artifacts-to-irys \
   --dry-run
 ```
 
-Live submission requires the deployed Anchor IDL and a Solana keypair:
+Live browser-wallet submission uses the bundled full IDL by default:
 
 ```bash
 node autoresearch-create/scripts/publish_project_solana.mjs ... \
-  --idl ./target/idl/open_research.json \
-  --keypair ~/.config/solana/id.json \
   --yes
 ```
+
+Filesystem-keypair submission is still available with `--keypair`; pass `--idl`
+only when testing a different Anchor build.
 
 ---
 

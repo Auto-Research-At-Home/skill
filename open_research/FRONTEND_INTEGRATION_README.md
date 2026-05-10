@@ -64,13 +64,13 @@ npm install -D @types/bn.js
 
 ## 3. IDL Setup
 
-After the Solana program is built with a compatible Anchor CLI, copy the generated IDL into the frontend:
+Copy the bundled full IDL into the frontend:
 
 ```sh
-cp target/idl/open_research.json ../frontend/src/idl/open_research.json
+cp idl/open_research.json ../frontend/src/idl/open_research.json
 ```
 
-If `anchor build` is blocked locally by an old CLI, build/deploy with `cargo build-sbf` and generate the IDL on a machine with a compatible Anchor CLI. The frontend needs the IDL to use `program.methods.*`.
+If you are testing a different program build, replace it with that build's generated IDL. The frontend needs the IDL to use `program.methods.*`.
 
 Frontend import shape:
 

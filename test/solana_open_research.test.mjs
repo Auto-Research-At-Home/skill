@@ -1,16 +1,36 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { Keypair, PublicKey } from "@solana/web3.js";
+import { buildPublishArtifactPaths } from "../autoresearch-create/scripts/publish_project_0g_lib.mjs";
+import {
+  applyIrysArtifactHashes,
+  buildIrysBrowserUploadPlan,
+  mergeIrysUploadReceipts,
+  prepareIrysStorageArtifacts,
+  resolveIrysNetwork,
+} from "../autoresearch-create/scripts/irys_storage.mjs";
 import {
   OPEN_RESEARCH_PROGRAM_ID,
+  approveProposalAccounts,
+  claimReviewAccounts,
+  claimRewardAccounts,
+  createAnchorWallet,
   createOpenResearchPdas,
   createProjectAccounts,
   createProjectInstructionArgs,
+  expireProposalAccounts,
   hex32ToBytes,
+  getOpenResearchProgram,
   i64Bn,
   publicKeyFrom,
+  rejectProposalAccounts,
+  releaseReviewAccounts,
   resolveSolanaConfig,
   stringifyPublicKeys,
+  submitInstructionArgs,
   submitProposalAccounts,
   summarizeSolanaCreateProject,
   u64BigInt,
@@ -19,8 +39,12 @@ import {
   userProjectTokenAccount,
 } from "../autoresearch-create/scripts/solana_open_research.mjs";
 
-const OWNER = Keypair.fromSeed(
+const OWNER_KEYPAIR = Keypair.fromSeed(
   Uint8Array.from(Array.from({ length: 32 }, (_v, i) => i + 1)),
+);
+const OWNER = OWNER_KEYPAIR.publicKey;
+const REWARD = Keypair.fromSeed(
+  Uint8Array.from(Array.from({ length: 32 }, (_v, i) => 100 + i)),
 ).publicKey;
 
 test("resolves Solana config from env and validates program ids", () => {
@@ -131,6 +155,20 @@ test("builds createProject args and account maps for Anchor", () => {
 });
 
 test("builds submit proposal accounts without ERC20 allowance concepts", () => {
+  const args = submitInstructionArgs({
+    projectId: 42n,
+    codeHash: `0x${"05".repeat(32)}`,
+    benchmarkLogHash: `0x${"06".repeat(32)}`,
+    claimedAggregateScore: "11",
+    stake: "3",
+    rewardRecipient: REWARD,
+  });
+  assert.equal(args.projectId.toString(), "42");
+  assert.deepEqual(args.codeHash, Array(32).fill(5));
+  assert.equal(args.claimedAggregateScore.toString(), "11");
+  assert.equal(args.stake.toString(), "3");
+  assert.equal(args.rewardRecipient.toBase58(), REWARD.toBase58());
+
   const accounts = submitProposalAccounts({
     miner: OWNER,
     projectId: 42n,
@@ -142,6 +180,185 @@ test("builds submit proposal accounts without ERC20 allowance concepts", () => {
     accounts.minerTokenAccount.toBase58(),
     "DzWkKreQbb2kA6mEp2Zqyzm21eaMwm7hBpsw7bhQnA58",
   );
+});
+
+test("builds verifier settlement and reward account maps from the full IDL", () => {
+  const claim = claimReviewAccounts({ verifier: OWNER, proposalId: 7n });
+  assert.equal(claim.verifier.toBase58(), OWNER.toBase58());
+  assert.equal(claim.proposal.toBase58(), "8qTMYLPsraSjNnjwoy3XCrksF8oPP6S4t17rWGB2gH38");
+
+  const release = releaseReviewAccounts({ cranker: OWNER, proposalId: 7n });
+  assert.equal(release.cranker.toBase58(), OWNER.toBase58());
+  assert.equal(release.proposal.toBase58(), claim.proposal.toBase58());
+
+  const approve = approveProposalAccounts({
+    verifier: OWNER,
+    projectId: 42n,
+    proposalId: 7n,
+    miner: OWNER,
+    rewardRecipient: REWARD,
+  });
+  assert.equal(approve.proposalEscrow.toBase58(), "B1i1RNHkM3AQDaFRJvxTZwPSY8QX144iVMN5tTyVqeHM");
+  assert.equal(
+    approve.rewardRecipientTokenAccount.toBase58(),
+    userProjectTokenAccount(approve.mint, REWARD).toBase58(),
+  );
+
+  const reject = rejectProposalAccounts({
+    verifier: OWNER,
+    projectId: 42n,
+    proposalId: 7n,
+  });
+  assert.equal(reject.claimable.toBase58(), "2hhJS2fwpgXS6wtywb8Ce2w4YddFggjEzaQNxQnfU9U4");
+
+  const expire = expireProposalAccounts({
+    cranker: OWNER,
+    projectId: 42n,
+    proposalId: 7n,
+  });
+  assert.equal(expire.claimable.toBase58(), reject.claimable.toBase58());
+
+  const reward = claimRewardAccounts({ claimer: OWNER, projectId: 42n });
+  assert.equal(reward.claimerTokenAccount.toBase58(), "DzWkKreQbb2kA6mEp2Zqyzm21eaMwm7hBpsw7bhQnA58");
+});
+
+test("all skill Solana bundles use the root full IDL", () => {
+  const root = JSON.parse(fs.readFileSync(path.resolve("idl/open_research.json"), "utf8"));
+  const create = JSON.parse(
+    fs.readFileSync(
+      path.resolve("autoresearch-create/contracts/solana-open-research/open_research.json"),
+      "utf8",
+    ),
+  );
+  const mine = JSON.parse(
+    fs.readFileSync(
+      path.resolve("autoresearch-mine/contracts/solana-open-research/open_research.json"),
+      "utf8",
+    ),
+  );
+  const validate = JSON.parse(
+    fs.readFileSync(
+      path.resolve("autoresearch-validate/contracts/solana-open-research/open_research.json"),
+      "utf8",
+    ),
+  );
+  const instructionNames = new Set(root.instructions.map((ix) => ix.name));
+
+  for (const required of [
+    "create_project",
+    "submit",
+    "claim_review",
+    "approve",
+    "reject",
+    "release_review",
+    "expire",
+    "claim_reward",
+  ]) {
+    assert.equal(instructionNames.has(required), true, `${required} missing`);
+  }
+  assert.deepEqual(create, root);
+  assert.deepEqual(mine, root);
+  assert.deepEqual(validate, root);
+});
+
+test("full IDL builds Anchor instructions for miner and verifier flows", async () => {
+  const idl = JSON.parse(fs.readFileSync(path.resolve("idl/open_research.json"), "utf8"));
+  const program = getOpenResearchProgram({
+    wallet: createAnchorWallet(OWNER_KEYPAIR),
+    idl,
+    rpcUrl: "http://127.0.0.1:8899",
+  });
+  const submitArgs = submitInstructionArgs({
+    projectId: 42n,
+    codeHash: `0x${"05".repeat(32)}`,
+    benchmarkLogHash: `0x${"06".repeat(32)}`,
+    claimedAggregateScore: "11",
+    stake: "3",
+    rewardRecipient: REWARD,
+  });
+  const submitIx = await program.methods
+    .submit(
+      submitArgs.projectId,
+      submitArgs.codeHash,
+      submitArgs.benchmarkLogHash,
+      submitArgs.claimedAggregateScore,
+      submitArgs.stake,
+      submitArgs.rewardRecipient,
+    )
+    .accounts(
+      submitProposalAccounts({
+        miner: OWNER,
+        projectId: 42n,
+        proposalId: 7n,
+      }),
+    )
+    .instruction();
+  assert.equal(submitIx.programId.toBase58(), OPEN_RESEARCH_PROGRAM_ID.toBase58());
+  assert.equal(submitIx.keys.length, 11);
+
+  const approveIx = await program.methods
+    .approve(
+      u64Bn(7n, "proposalId"),
+      i64Bn("12", "verifiedAggregateScore"),
+      hex32ToBytes(`0x${"07".repeat(32)}`, "metricsHash"),
+    )
+    .accounts(
+      approveProposalAccounts({
+        verifier: OWNER,
+        projectId: 42n,
+        proposalId: 7n,
+        miner: OWNER,
+        rewardRecipient: REWARD,
+      }),
+    )
+    .instruction();
+  assert.equal(approveIx.programId.toBase58(), OPEN_RESEARCH_PROGRAM_ID.toBase58());
+  assert.equal(approveIx.keys.length, 10);
+
+  const claimReviewIx = await program.methods
+    .claimReview(u64Bn(7n, "proposalId"))
+    .accounts(claimReviewAccounts({ verifier: OWNER, proposalId: 7n }))
+    .instruction();
+  assert.equal(claimReviewIx.keys.length, 3);
+
+  const releaseReviewIx = await program.methods
+    .releaseReview(u64Bn(7n, "proposalId"))
+    .accounts(releaseReviewAccounts({ cranker: OWNER, proposalId: 7n }))
+    .instruction();
+  assert.equal(releaseReviewIx.keys.length, 2);
+
+  const rejectIx = await program.methods
+    .reject(
+      u64Bn(7n, "proposalId"),
+      hex32ToBytes(`0x${"08".repeat(32)}`, "metricsHash"),
+    )
+    .accounts(
+      rejectProposalAccounts({
+        verifier: OWNER,
+        projectId: 42n,
+        proposalId: 7n,
+      }),
+    )
+    .instruction();
+  assert.equal(rejectIx.keys.length, 11);
+
+  const expireIx = await program.methods
+    .expire(u64Bn(7n, "proposalId"))
+    .accounts(
+      expireProposalAccounts({
+        cranker: OWNER,
+        projectId: 42n,
+        proposalId: 7n,
+      }),
+    )
+    .instruction();
+  assert.equal(expireIx.keys.length, 10);
+
+  const claimRewardIx = await program.methods
+    .claimReward(u64Bn(42n, "projectId"))
+    .accounts(claimRewardAccounts({ claimer: OWNER, projectId: 42n }))
+    .instruction();
+  assert.equal(claimRewardIx.keys.length, 8);
 });
 
 test("summarizes Solana publish plan as JSON-safe strings", () => {
@@ -171,4 +388,53 @@ test("summarizes Solana publish plan as JSON-safe strings", () => {
   assert.deepEqual(stringifyPublicKeys({ key: publicKeyFrom(OWNER) }), {
     key: OWNER.toBase58(),
   });
+});
+
+test("prepares Irys artifact hashes and upload metadata for Solana publishes", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "arah-irys-"));
+  const protocolJson = path.join(dir, "protocol.json");
+  const repo = path.join(dir, "repo.tar");
+  const benchmark = path.join(dir, "benchmark.tar");
+  const baseline = path.join(dir, "baseline.log");
+  fs.writeFileSync(protocolJson, "{}\n");
+  fs.writeFileSync(repo, "repo");
+  fs.writeFileSync(benchmark, "bench");
+  fs.writeFileSync(baseline, "metric=1");
+
+  const network = resolveIrysNetwork({ cluster: "devnet" });
+  const artifactPaths = buildPublishArtifactPaths({
+    protocolJson,
+    repoSnapshotFile: repo,
+    benchmarkFile: benchmark,
+    baselineMetricsFile: baseline,
+  });
+  const artifacts = prepareIrysStorageArtifacts({ artifactPaths, network });
+  const options = applyIrysArtifactHashes({ protocolJson }, artifacts);
+  const uploadPlan = buildIrysBrowserUploadPlan({
+    storageArtifacts: artifacts,
+    network,
+  });
+
+  assert.equal(network.name, "devnet");
+  assert.match(options.protocolHash, /^0x[0-9a-f]{64}$/);
+  assert.equal(options.protocolHash, artifacts.protocol.sha256Bytes32);
+  assert.equal(uploadPlan.gatewayUrl, "https://devnet.irys.xyz");
+  assert.equal(uploadPlan.artifacts.length, 4);
+  assert.equal(uploadPlan.artifacts[0].fetchPath, "artifact/protocol");
+
+  const uploaded = mergeIrysUploadReceipts({
+    storageArtifacts: artifacts,
+    network,
+    uploadResult: {
+      artifacts: {
+        protocol: { id: "id-protocol" },
+        repoSnapshot: { id: "id-repo" },
+        benchmark: { id: "id-benchmark" },
+        baselineMetrics: { id: "id-baseline" },
+      },
+    },
+  });
+
+  assert.equal(uploaded.protocol.irys.uploaded, true);
+  assert.equal(uploaded.protocol.irys.gatewayUri, "https://devnet.irys.xyz/id-protocol");
 });

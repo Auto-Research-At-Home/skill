@@ -32,5 +32,8 @@
   },
   "devDependencies": {
     "@types/bn.js": "^5.2.0"
+  },
+  "overrides": {
+    "uuid": "8.3.2"
   }
 }

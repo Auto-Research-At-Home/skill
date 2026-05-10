@@ -3,40 +3,55 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { Keypair } from "@solana/web3.js";
+import { Keypair, PublicKey } from "@solana/web3.js";
 import {
-  applyStorageRootHashes,
   bigintReplacer,
   buildCreateProjectInputs,
   buildPublishArtifactPaths,
-  loadDeployment,
   parseArgs,
-  prepare0gStorageArtifacts,
   readJson,
-  storageIndexerRpc,
-  storagePrivateKeyEnv,
 } from "./publish_project_0g_lib.mjs";
+import {
+  applyIrysArtifactHashes,
+  buildIrysBrowserUploadPlan,
+  mergeIrysUploadReceipts,
+  prepareIrysStorageArtifacts,
+  resolveIrysNetwork,
+} from "./irys_storage.mjs";
 import {
   createAnchorWallet,
   createOpenResearchPdas,
   createProjectAccounts,
   createProjectInstructionArgs,
   getOpenResearchProgram,
+  publicKeyFrom,
   readSolanaKeypair,
   resolveSolanaConfig,
   stringifyPublicKeys,
   summarizeSolanaCreateProject,
   u64BigInt,
 } from "./solana_open_research.mjs";
+import { startLocalSolanaWalletPublish } from "./local_solana_wallet_publish.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const SKILL_DIR = path.resolve(SCRIPT_DIR, "..");
-const DEFAULT_0G_DEPLOYMENT = path.join(
+const DEFAULT_SOLANA_DEPLOYMENT = path.join(
   SKILL_DIR,
   "contracts",
-  "0g-galileo-testnet",
+  "solana-open-research",
   "deployment.json",
 );
+
+function resolveBundledIdlPath() {
+  try {
+    const deployment = readJson(DEFAULT_SOLANA_DEPLOYMENT);
+    const idlField = deployment?.programs?.OpenResearch?.idl;
+    if (!idlField) return null;
+    return path.resolve(path.dirname(DEFAULT_SOLANA_DEPLOYMENT), idlField);
+  } catch {
+    return null;
+  }
+}
 
 function usage() {
   console.log(`Usage:
@@ -51,24 +66,44 @@ function usage() {
     --base-price 100000 \\
     --slope 1000 \\
     --miner-pool-cap 21000000 \\
-    --creator <solana-pubkey> \\
-    --project-id 0 \\
-    --upload-artifacts-to-0g \\
-    --dry-run
+    --upload-artifacts-to-irys \\
+    --yes
 
-Live Solana submit:
-  add --idl ./target/idl/open_research.json --keypair ~/.config/solana/id.json --yes
+Default live submit:
+  Opens a localhost browser page; pick your Solana wallet extension
+  (Phantom, Solflare, Backpack, or any Wallet Standard wallet) and
+  approve the createProject transaction. No private key on disk.
+
+Filesystem keypair fallback:
+  add --keypair ~/.config/solana/id.json to sign without a browser.
 
 Notes:
-  - 0G Storage remains the artifact storage layer. With --dry-run, this computes
-    0G Merkle roots but does not upload. Without --dry-run, set ZG_STORAGE_PRIVATE_KEY
-    for the 0G/EVM storage upload signer.
-  - Solana writes use the Anchor IDL and the supplied Solana keypair. The keypair
-    must match --creator when --creator is provided.
+  - Bundled full Anchor IDL is at contracts/solana-open-research/open_research.json.
+    Override with --idl only when testing another build.
+  - Irys is the default artifact layer for Solana. On devnet/testnet it uses
+    Irys devnet; on mainnet-beta it uses Irys mainnet. Override with
+    --irys-network devnet|mainnet.
+  - The four on-chain hash fields are SHA-256 of the raw artifact bytes.
+    Irys transaction ids and gateway URLs are recorded in storage_irys.json.
+  - Pass --allow-skip-storage only if you intentionally want to publish hashes
+    without uploading the files to Irys.
+  - --dry-run defaults --project-id to 0 if not supplied.
   - RPC defaults to devnet. Override with --cluster, --rpc-url, or env vars:
     NEXT_PUBLIC_SOLANA_CLUSTER, NEXT_PUBLIC_SOLANA_RPC_URL,
     NEXT_PUBLIC_OPEN_RESEARCH_PROGRAM_ID.
 `);
+}
+
+function readonlyAnchorWallet(publicKey) {
+  return {
+    publicKey: publicKeyFrom(publicKey, "creator"),
+    signTransaction: async () => {
+      throw new Error("read-only wallet cannot sign");
+    },
+    signAllTransactions: async () => {
+      throw new Error("read-only wallet cannot sign");
+    },
+  };
 }
 
 async function main() {
@@ -82,17 +117,28 @@ async function main() {
   if (live && !options.yes) {
     throw new Error("refusing to submit Solana transaction without --yes");
   }
-  if (live && !options.uploadArtifactsTo0g && !options.allowSkipStorage) {
-    throw new Error(
-      "refusing to create on-chain project without 0G Storage uploads. " +
-        "Pass --upload-artifacts-to-0g or --allow-skip-storage.",
+  if (options.uploadArtifactsTo0g) {
+    console.warn(
+      "[warning] --upload-artifacts-to-0g is deprecated for Solana publishes; using Irys instead.",
     );
   }
-  if (live && (!options.idl || !options.keypair)) {
-    throw new Error("live Solana submit requires --idl and --keypair");
+  const useBrowserWallet = live && !options.keypair;
+  const idlPath = options.idl
+    ? path.resolve(options.idl)
+    : resolveBundledIdlPath();
+  if (live && !idlPath) {
+    throw new Error(
+      "no Anchor IDL available: pass --idl, or restore the bundled IDL at contracts/solana-open-research/open_research.json",
+    );
   }
-  if (!live && !options.projectId) {
-    throw new Error("--dry-run requires --project-id because nextProjectId is on-chain");
+  if (live && idlPath && !fs.existsSync(idlPath)) {
+    throw new Error(`Anchor IDL not found at ${idlPath}`);
+  }
+  if (!live && !options.projectId && options.projectId !== 0) {
+    options.projectId = "0";
+    console.log(
+      "[dry-run] no --project-id supplied; defaulting to 0 for the publish plan",
+    );
   }
 
   const outputDir = path.resolve(
@@ -101,57 +147,107 @@ async function main() {
   fs.mkdirSync(outputDir, { recursive: true });
 
   const solanaConfig = resolveSolanaConfig(options);
-  const storageDeploymentPath = path.resolve(
-    options.zgDeployment || DEFAULT_0G_DEPLOYMENT,
-  );
-  const storageDeployment = loadDeployment(storageDeploymentPath);
+  const irysNetwork = resolveIrysNetwork({
+    cluster: solanaConfig.cluster,
+    irysNetwork: options.irysNetwork,
+  });
+  const useIrysStorage =
+    !options.allowSkipStorage &&
+    (live || options.uploadArtifactsToIrys || options.uploadArtifactsTo0g);
+  if (live && options.keypair && useIrysStorage) {
+    throw new Error(
+      "live Irys uploads require the browser wallet flow. Omit --keypair, or pass --allow-skip-storage if you intentionally want no artifact upload.",
+    );
+  }
 
   let storageArtifacts = null;
   let inputOptions = options;
-  if (options.uploadArtifactsTo0g) {
+  let irysUploadPlan = null;
+  if (useIrysStorage) {
     const artifactPaths = buildPublishArtifactPaths(options);
-    const upload = live;
-    const signer = upload
-      ? await resolve0gStorageEnvSigner({ options, deployment: storageDeployment })
-      : null;
-    storageArtifacts = await prepare0gStorageArtifacts({
+    storageArtifacts = prepareIrysStorageArtifacts({
       artifactPaths,
-      blockchainRpc: storageDeployment.network.rpcUrl,
-      indexerRpc: storageIndexerRpc(options, storageDeployment),
-      signer,
-      upload,
-      taskSize: options.zgStorageTaskSize,
-      expectedReplica: options.zgStorageExpectedReplica,
-      onProgress: (message) => console.log(`[0G Storage] ${message}`),
+      network: irysNetwork,
     });
-    writeStorageManifest({
-      outputDir,
-      deployment: storageDeployment,
-      indexerRpc: storageIndexerRpc(options, storageDeployment),
+    irysUploadPlan = buildIrysBrowserUploadPlan({
       storageArtifacts,
-      upload,
+      network: irysNetwork,
     });
-    inputOptions = applyStorageRootHashes(options, storageArtifacts);
+    inputOptions = applyIrysArtifactHashes(options, storageArtifacts);
+    if (!live) {
+      writeIrysStorageManifest({
+        outputDir,
+        network: irysNetwork,
+        storageArtifacts,
+        uploaded: false,
+      });
+    }
+  }
+
+  let walletSession = null;
+  if (useBrowserWallet) {
+    walletSession = await startLocalSolanaWalletPublish({
+      cluster: solanaConfig.cluster,
+      rpcUrl: solanaConfig.rpcUrl,
+      programId: solanaConfig.programId.toBase58(),
+      storageArtifacts,
+      irysUploadPlan,
+      artifactFiles: storageArtifacts,
+      flow: useIrysStorage ? "irys-register" : "register-only",
+      open: !options.noOpen,
+    });
+    console.log(
+      "\nOpen this local wallet signing page in a browser with your Solana wallet extension:\n",
+    );
+    console.log(walletSession.url);
+    console.log(
+      useIrysStorage
+        ? "\nConnect your wallet there to upload artifacts to Irys and approve the createProject transaction.\n"
+        : "\nConnect your wallet there to approve the createProject transaction.\n",
+    );
   }
 
   const inputs = buildCreateProjectInputs(inputOptions);
   const keypair = options.keypair
     ? Keypair.fromSecretKey(readSolanaKeypair(path.resolve(options.keypair)))
     : null;
-  const creator = options.creator || keypair?.publicKey;
-  if (!creator) {
-    throw new Error("--creator is required when --keypair is not supplied");
-  }
-  if (keypair && options.creator && keypair.publicKey.toBase58() !== String(options.creator)) {
-    throw new Error("--creator does not match --keypair public key");
+
+  let creator;
+  if (useBrowserWallet) {
+    console.log("Waiting for wallet connection in the browser…");
+    const connected = await walletSession.waitForAccount();
+    creator = new PublicKey(connected);
+    if (options.creator && String(options.creator) !== creator.toBase58()) {
+      throw new Error(
+        `--creator ${options.creator} does not match the connected wallet ${creator.toBase58()}`,
+      );
+    }
+    console.log(`Connected wallet: ${creator.toBase58()}`);
+  } else {
+    creator = options.creator
+      ? publicKeyFrom(options.creator, "creator")
+      : keypair?.publicKey;
+    if (!creator) {
+      throw new Error("--creator is required when --keypair is not supplied");
+    }
+    if (
+      keypair &&
+      options.creator &&
+      keypair.publicKey.toBase58() !== String(options.creator)
+    ) {
+      throw new Error("--creator does not match --keypair public key");
+    }
   }
 
   let projectId = options.projectId ? u64BigInt(options.projectId, "project id") : null;
   let program = null;
   if (live) {
-    const idl = readJson(path.resolve(options.idl));
+    const idl = readJson(idlPath);
+    const wallet = keypair
+      ? createAnchorWallet(keypair)
+      : readonlyAnchorWallet(creator);
     program = getOpenResearchProgram({
-      wallet: createAnchorWallet(keypair),
+      wallet,
       idl,
       rpcUrl: solanaConfig.rpcUrl,
       programId: solanaConfig.programId,
@@ -172,66 +268,128 @@ async function main() {
   console.log("\nSolana OpenResearch publish plan\n");
   console.log(JSON.stringify(summary, bigintReplacer, 2));
   if (storageArtifacts) {
-    console.log("\n0G Storage artifacts\n");
+    console.log("\nIrys storage artifacts\n");
     console.log(JSON.stringify(storageArtifacts, bigintReplacer, 2));
   }
+  walletSession?.setSummary(summary);
 
   if (!live) {
     const planPath = path.join(outputDir, "publish_solana_plan.json");
     fs.writeFileSync(
       planPath,
-      JSON.stringify({ solana: summary, storageArtifacts }, bigintReplacer, 2) + "\n",
+      JSON.stringify({ solana: summary, storageArtifacts, irysUploadPlan }, bigintReplacer, 2) + "\n",
     );
     console.log(`Solana publish plan written: ${planPath}`);
     return 0;
   }
 
-  const signature = await program.methods
-    .createProject(createProjectInstructionArgs(inputs))
-    .accounts(createProjectAccounts({ creator, projectId, programId: solanaConfig.programId }))
-    .rpc();
+  let signature;
+  if (useBrowserWallet) {
+    if (useIrysStorage) {
+      console.log("\nWaiting for browser Irys uploads…\n");
+      const irysResult = await walletSession.waitForIrysUploads();
+      storageArtifacts = mergeIrysUploadReceipts({
+        storageArtifacts,
+        uploadResult: irysResult,
+        network: irysNetwork,
+      });
+      writeIrysStorageManifest({
+        outputDir,
+        network: irysNetwork,
+        storageArtifacts,
+        uploaded: true,
+      });
+      walletSession.setStorageArtifacts(storageArtifacts);
+    }
+    walletSession.setStepStatus("register", "active");
+    const instruction = await program.methods
+      .createProject(createProjectInstructionArgs(inputs))
+      .accounts(
+        createProjectAccounts({
+          creator,
+          projectId,
+          programId: solanaConfig.programId,
+        }),
+      )
+      .instruction();
+    walletSession.setInstructionPlan({
+      programId: instruction.programId.toBase58(),
+      keys: instruction.keys.map((k) => ({
+        pubkey: k.pubkey.toBase58(),
+        isSigner: !!k.isSigner,
+        isWritable: !!k.isWritable,
+      })),
+      data: Buffer.from(instruction.data).toString("base64"),
+    });
+
+    console.log("\nWaiting for browser wallet approval and signature…\n");
+    const result = await walletSession.result;
+    signature = result.signature;
+    console.log(`Solana transaction signature: ${signature}`);
+
+    console.log("Confirming transaction…");
+    const status = await program.provider.connection.confirmTransaction(
+      signature,
+      "confirmed",
+    );
+    if (status.value.err) {
+      const message = `transaction failed: ${JSON.stringify(status.value.err)}`;
+      walletSession.setStepStatus("register", "error", message);
+      throw new Error(message);
+    }
+  } else {
+    signature = await program.methods
+      .createProject(createProjectInstructionArgs(inputs))
+      .accounts(
+        createProjectAccounts({
+          creator,
+          projectId,
+          programId: solanaConfig.programId,
+        }),
+      )
+      .rpc();
+  }
+
   const record = {
     cluster: solanaConfig.cluster,
     rpcUrl: solanaConfig.rpcUrl,
     programId: solanaConfig.programId.toBase58(),
     signature,
     projectId: projectId.toString(),
-    creator: keypair.publicKey.toBase58(),
+    creator: creator.toBase58(),
     accounts: summary.accounts,
     args: stringifyPublicKeys(summary.args),
     storageArtifacts,
+    signedBy: keypair ? "keypair" : "browserWallet",
+    storageLayer: storageArtifacts ? "Irys" : "none",
   };
   const recordPath = path.join(outputDir, "publish_solana.json");
   fs.writeFileSync(recordPath, JSON.stringify(record, bigintReplacer, 2) + "\n");
   console.log(`Publish record written: ${recordPath}`);
   console.log(`Solana transaction signature: ${signature}`);
+
+  walletSession?.setComplete({
+    signature,
+    projectId: projectId.toString(),
+    cluster: solanaConfig.cluster,
+  });
+  await walletSession?.close({ delayMs: 5000 });
   return 0;
 }
 
-async function resolve0gStorageEnvSigner({ options, deployment }) {
-  const envName = storagePrivateKeyEnv(options);
-  const privateKey = process.env[envName];
-  if (!privateKey) {
-    throw new Error(`${envName} is required for live 0G Storage upload in Solana publish flow`);
-  }
-  const { ethers } = await import("ethers");
-  const provider = new ethers.JsonRpcProvider(deployment.network.rpcUrl);
-  return new ethers.Wallet(privateKey, provider);
-}
-
-function writeStorageManifest({ outputDir, deployment, indexerRpc, storageArtifacts, upload }) {
+function writeIrysStorageManifest({ outputDir, network, storageArtifacts, uploaded }) {
   const manifest = {
-    storageNetwork: deployment.network.name,
-    storageChainId: deployment.network.chainId,
-    storageRpcUrl: deployment.network.rpcUrl,
-    indexerRpc,
-    uploaded: upload,
+    storageNetwork: "Irys",
+    irysNetwork: network.name,
+    gatewayUrl: network.gatewayUrl,
+    permanence: network.permanence,
+    uploaded,
     artifacts: storageArtifacts,
-    note: "Solana project hash fields use these 0G Storage rootHash values when --upload-artifacts-to-0g is set.",
+    note: "Solana project hash fields use sha256Bytes32 values computed from the raw artifact bytes. Irys ids and gateway URIs are retrieval metadata.",
   };
-  const manifestPath = path.join(outputDir, "storage_0g_solana.json");
+  const manifestPath = path.join(outputDir, "storage_irys.json");
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, bigintReplacer, 2) + "\n");
-  console.log(`0G Storage manifest written: ${manifestPath}`);
+  console.log(`Irys storage manifest written: ${manifestPath}`);
 }
 
 main().then(
