@@ -12,6 +12,7 @@ import {
   prepareIrysStorageArtifacts,
   resolveIrysNetwork,
 } from "../autoresearch-create/scripts/irys_storage.mjs";
+import { startLocalSolanaWalletPublish } from "../autoresearch-create/scripts/local_solana_wallet_publish.mjs";
 import {
   OPEN_RESEARCH_PROGRAM_ID,
   approveProposalAccounts,
@@ -437,4 +438,29 @@ test("prepares Irys artifact hashes and upload metadata for Solana publishes", (
 
   assert.equal(uploaded.protocol.irys.uploaded, true);
   assert.equal(uploaded.protocol.irys.gatewayUri, "https://devnet.irys.xyz/id-protocol");
+});
+
+test("Solana wallet page renders a local connect step before remote SDK imports", async () => {
+  const session = await startLocalSolanaWalletPublish({
+    cluster: "devnet",
+    rpcUrl: "https://api.devnet.solana.com",
+    programId: OPEN_RESEARCH_PROGRAM_ID.toBase58(),
+    flow: "irys-register",
+    open: false,
+    timeoutMs: 30_000,
+  });
+
+  try {
+    const html = await (await fetch(session.url)).text();
+    assert.match(html, /const bootProgress =/);
+    assert.match(html, /renderProgress\(bootProgress\)/);
+    assert.match(html, /Connect your Solana wallet/);
+    assert.equal(/import\\s*\\{[^}]*Connection[^}]*\\}\\s*from/.test(html), false);
+    assert.equal(
+      html.includes('import("https://esm.sh/@solana/web3.js'),
+      true,
+    );
+  } finally {
+    await session.close();
+  }
 });
