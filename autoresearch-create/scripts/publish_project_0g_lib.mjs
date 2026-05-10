@@ -414,6 +414,7 @@ export function parseArgs(argv) {
     "uploadArtifactsToIrys",
     "storageOnly",
     "allowSkipStorage",
+    "initializeOnly",
   ]);
   for (let i = 0; i < argv.length; i += 1) {
     const raw = argv[i];

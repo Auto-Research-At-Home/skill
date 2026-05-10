@@ -568,8 +568,8 @@ function detailFor(step) {
     }
   }
   if (step.id === "register") {
-    if (step.status === "active") return "Approve the OpenResearch createProject transaction in your wallet.";
-    if (step.status === "done") return "Project registered on Solana.";
+    if (step.status === "active") return "Approve the OpenResearch transaction in your wallet.";
+    if (step.status === "done") return "Transaction submitted on Solana.";
     if (step.status === "pending") return "Unlocks once artifact storage and instruction preparation finish.";
     if (step.status === "error") return step.detail ? escapeHtml(step.detail) : "Wallet rejected or transaction failed.";
   }
@@ -634,6 +634,8 @@ function renderSuccess(completion = {}) {
   const signature = completion.signature;
   const projectId = completion.projectId;
   const cluster = completion.cluster || (session && session.chain && session.chain.cluster);
+  const title = completion.title || "Project published";
+  const description = completion.description || "You can return to the CLI — it has the receipt.";
   let kv = "";
   if (projectId !== undefined && projectId !== null) kv += '<dt>Project ID</dt><dd>' + escapeHtml(projectId) + '</dd>';
   if (signature) kv += '<dt>Signature</dt><dd>' + escapeHtml(signature) + '</dd>';
@@ -644,8 +646,8 @@ function renderSuccess(completion = {}) {
     explorer = '<p><a target="_blank" rel="noopener" href="https://explorer.solana.com/tx/' + encodeURIComponent(signature) + c + '">View on Solana Explorer</a></p>';
   }
   successCardEl.innerHTML = '<div class="success">'
-    + '<h2>Project published</h2>'
-    + '<p>You can return to the CLI — it has the receipt.</p>'
+    + '<h2>' + escapeHtml(title) + '</h2>'
+    + '<p>' + escapeHtml(description) + '</p>'
     + (kv ? '<dl class="kv">' + kv + '</dl>' : '')
     + explorer
     + '</div>';
@@ -857,7 +859,7 @@ async function submitTransaction(plan, chain) {
     tx.feePayer = connectedWallet.publicKey;
     tx.recentBlockhash = blockhash;
 
-    setWalletStatus("Approve the createProject transaction in your wallet…");
+    setWalletStatus("Approve the OpenResearch transaction in your wallet…");
     let signature;
     if (typeof connectedWallet.signAndSendTransaction === "function") {
       const sent = await connectedWallet.signAndSendTransaction(tx);
@@ -1291,7 +1293,7 @@ function buildInitialProgress(flow) {
   if (flow === "irys-register") {
     steps.push({ id: "storage", label: "Upload artifacts to Irys", status: "pending", detail: "" });
   }
-  steps.push({ id: "register", label: "Sign & send createProject", status: "pending", detail: "" });
+  steps.push({ id: "register", label: "Sign & send transaction", status: "pending", detail: "" });
   return {
     flow: flow === "irys-register" ? "solana-irys-register" : "solana-register",
     status: "in-progress",

@@ -29,6 +29,29 @@ Devnet/testnet publishes use Irys devnet, which is suitable for testing and
 may expire after the devnet retention window. Mainnet-beta publishes use Irys
 mainnet and pay real SOL for permanent Arweave-backed storage.
 
+## Deployment prerequisite: initialize the program
+
+The publish CLI reads the on-chain `GlobalConfig` PDA to fetch the next
+project id. A fresh program deployment has no `GlobalConfig` yet — anyone
+running the publish flow on a cluster where the program was never initialized
+will see the wallet page hang on a transaction that cannot be built.
+
+Bootstrap the program once on each target cluster, signed by the program's
+authority wallet:
+
+```bash
+node scripts/publish_project_solana.mjs --initialize-only --yes
+```
+
+This opens the same localhost wallet page and submits a single `initialize`
+instruction. Add `--keypair` to sign headlessly, or `--cluster` / `--rpc-url`
+to target a non-default cluster. The CLI writes `initialize_solana.json` next
+to the working directory and exits.
+
+`publish_project_solana.mjs` performs a preflight check before opening the
+wallet page; if `GlobalConfig` is missing it now fails fast with the exact
+bootstrap command instead of waiting on a signature.
+
 ## Default flow: browser wallet
 
 By default, live publishes use a temporary localhost HTTP page that discovers
@@ -135,15 +158,14 @@ scores, Associated Token Accounts, and Anchor account maps.
 
 1. Copy the Anchor IDL into the frontend and build calls through
    `program.methods.*`.
-2. Call `initialize` once after deployment if it was not already called.
-3. Add verifiers using the authority wallet.
-4. Derive PDAs from seeds instead of storing per-module contract addresses.
-5. Treat project tokens as SPL Token mints with `decimals = 0`.
-6. Convert every EVM `address` to a Solana `PublicKey`.
-7. Convert every EVM `bytes32` to exactly 32 bytes.
-8. Convert EVM `uint256` values to Anchor `BN`, then ensure on-chain
+2. Add verifiers using the authority wallet.
+3. Derive PDAs from seeds instead of storing per-module contract addresses.
+4. Treat project tokens as SPL Token mints with `decimals = 0`.
+5. Convert every EVM `address` to a Solana `PublicKey`.
+6. Convert every EVM `bytes32` to exactly 32 bytes.
+7. Convert EVM `uint256` values to Anchor `BN`, then ensure on-chain
    token/lamport amounts fit `u64`.
-9. Replace ERC20 approval/allowance flows with wallet-signed SPL token
+8. Replace ERC20 approval/allowance flows with wallet-signed SPL token
    account transfers.
 
 Detailed frontend examples are mirrored in
