@@ -455,15 +455,6 @@ function renderSignPage() {
   </details>
 </main>
 <script type="module">
-import {
-  Connection,
-  PublicKey,
-  Transaction,
-  TransactionInstruction,
-} from "https://esm.sh/@solana/web3.js@1.95.4?bundle";
-import { WebUploader } from "https://esm.sh/@irys/web-upload?bundle";
-import { WebSolana } from "https://esm.sh/@irys/web-upload-solana?bundle";
-
 const stepsEl = document.getElementById("steps");
 const summaryJsonEl = document.getElementById("summaryJson");
 const successCardEl = document.getElementById("successCard");
@@ -480,6 +471,36 @@ let walletStatusMessage = "";
 let walletStatusIsError = false;
 let lastRenderKey = "";
 let connection = null;
+let solanaWeb3Promise = null;
+let irysModulesPromise = null;
+
+const bootProgress = {
+  status: "in-progress",
+  currentStepId: "connect",
+  steps: [
+    { id: "connect", label: "Connect your Solana wallet", status: "active", detail: "" },
+  ],
+};
+
+function loadSolanaWeb3() {
+  if (!solanaWeb3Promise) {
+    solanaWeb3Promise = import("https://esm.sh/@solana/web3.js@1.95.4?bundle");
+  }
+  return solanaWeb3Promise;
+}
+
+async function loadIrysModules() {
+  if (!irysModulesPromise) {
+    irysModulesPromise = Promise.all([
+      import("https://esm.sh/@irys/web-upload?bundle"),
+      import("https://esm.sh/@irys/web-upload-solana?bundle"),
+    ]).then(([webUpload, webSolana]) => ({
+      WebUploader: webUpload.WebUploader,
+      WebSolana: webSolana.WebSolana,
+    }));
+  }
+  return irysModulesPromise;
+}
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (ch) => ({
@@ -693,6 +714,7 @@ async function pollSessionForInstruction() {
 async function uploadArtifactsToIrys(plan, chain) {
   try {
     setWalletStatus("Connecting to Irys " + plan.network + "…");
+    const { WebUploader, WebSolana } = await loadIrysModules();
     const adapter = walletAdapterForIrys();
     let uploader = WebUploader(WebSolana).withProvider(adapter);
     if (plan.network === "devnet" && typeof uploader.devnet === "function") {
@@ -779,6 +801,12 @@ function decodeBase64(str) {
 async function submitTransaction(plan, chain) {
   try {
     setWalletStatus("Building Solana transaction…");
+    const {
+      Connection,
+      PublicKey,
+      Transaction,
+      TransactionInstruction,
+    } = await loadSolanaWeb3();
     if (!connection) connection = new Connection(chain.rpcUrl, "confirmed");
     const programId = new PublicKey(plan.programId);
     const keys = plan.keys.map((k) => ({
@@ -885,6 +913,7 @@ function registerWalletStandard() {
           const { accounts } = await connectFeature.connect();
           const account = accounts && accounts[0];
           if (!account) throw new Error(wallet.name + " did not return an account");
+          const { PublicKey } = await loadSolanaWeb3();
           const publicKey = new PublicKey(account.address);
           return {
             publicKey,
@@ -942,6 +971,7 @@ function bs58Encode(bytes) {
 }
 
 (async function init() {
+  renderProgress(bootProgress);
   pollProgress();
   setTimeout(() => {
     detectInjected();
