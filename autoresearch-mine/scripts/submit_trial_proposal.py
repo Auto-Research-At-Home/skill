@@ -59,13 +59,26 @@ def main() -> int:
     parser.add_argument("--claimed-metric", required=True)
     parser.add_argument("--stake", default=env_or_default_stake())
     parser.add_argument("--reward-recipient", required=True)
-    parser.add_argument("--wallet-id", required=True, help="Mining wallet keystore id (scripts/wallet.py).")
+    parser.add_argument("--chain", choices=("0g", "solana"), default=os.environ.get("ARAH_CHAIN", "0g"))
+    parser.add_argument("--wallet-id", help="0G mining wallet keystore id (scripts/wallet.py).")
     parser.add_argument("--passphrase-file", help="Path to a file with the wallet passphrase.")
     parser.add_argument("--metric-scale", type=int, default=int(os.environ.get("ARAH_METRIC_SCALE", "1000000")))
     parser.add_argument("--buy-value-wei", default="0")
     parser.add_argument("--auto-buy", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--solana-keypair", help="Solana keypair JSON for live Solana proposal submission.")
+    parser.add_argument("--solana-miner", help="Solana miner pubkey for dry-run without a keypair.")
+    parser.add_argument("--solana-idl", help="Override Anchor IDL for Solana proposal submission.")
+    parser.add_argument("--solana-cluster", help="Solana cluster override.")
+    parser.add_argument("--solana-rpc-url", help="Solana RPC URL override.")
+    parser.add_argument("--solana-proposal-id", help="Proposal id override, mainly for dry-runs.")
+    parser.add_argument("--yes", action="store_true", help="Confirm live Solana transaction submission.")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+
+    if args.chain == "0g" and not args.wallet_id:
+        parser.error("--wallet-id is required for --chain 0g")
+    if args.chain == "solana" and args.token_address:
+        parser.error("--chain solana requires --project-id; --token-address is 0G-only")
 
     repo_root = args.repo_root.expanduser().resolve()
     trial_log = repo_root / ".autoresearch" / "mine" / "runs" / args.trial_id / "stdout.log"
@@ -82,36 +95,72 @@ def main() -> int:
         code_tar = submission_dir / "repo-snapshot.tar"
         create_code_archive(repo_root, code_tar)
 
-        cmd = [
-            sys.executable,
-            str(SCRIPT_DIR / "submit_proposal.py"),
-            "--wallet-id",
-            args.wallet_id,
-            "--code-file",
-            str(code_tar),
-            "--benchmark-log-file",
-            str(trial_log),
-            "--claimed-metric",
-            args.claimed_metric,
-            "--metric-scale",
-            str(args.metric_scale),
-            "--stake",
-            args.stake,
-            "--reward-recipient",
-            args.reward_recipient,
-            "--buy-value-wei",
-            args.buy_value_wei,
-        ]
-        if args.passphrase_file:
-            cmd.extend(["--passphrase-file", args.passphrase_file])
-        if args.project_id is not None:
-            cmd.extend(["--project-id", str(args.project_id)])
-        if args.token_address:
-            cmd.extend(["--token-address", args.token_address])
-        if args.auto_buy:
-            cmd.append("--auto-buy")
-        if args.dry_run:
-            cmd.append("--dry-run")
+        if args.chain == "solana":
+            cmd = [
+                "node",
+                str(SCRIPT_DIR / "submit_proposal_solana.mjs"),
+                "--project-id",
+                str(args.project_id),
+                "--code-file",
+                str(code_tar),
+                "--benchmark-log-file",
+                str(trial_log),
+                "--claimed-metric",
+                args.claimed_metric,
+                "--metric-scale",
+                str(args.metric_scale),
+                "--stake",
+                args.stake,
+                "--reward-recipient",
+                args.reward_recipient,
+            ]
+            if args.solana_keypair:
+                cmd.extend(["--keypair", args.solana_keypair])
+            if args.solana_miner:
+                cmd.extend(["--miner", args.solana_miner])
+            if args.solana_idl:
+                cmd.extend(["--idl", args.solana_idl])
+            if args.solana_cluster:
+                cmd.extend(["--cluster", args.solana_cluster])
+            if args.solana_rpc_url:
+                cmd.extend(["--rpc-url", args.solana_rpc_url])
+            if args.solana_proposal_id:
+                cmd.extend(["--proposal-id", args.solana_proposal_id])
+            if args.yes:
+                cmd.append("--yes")
+            if args.dry_run:
+                cmd.append("--dry-run")
+        else:
+            cmd = [
+                sys.executable,
+                str(SCRIPT_DIR / "submit_proposal.py"),
+                "--wallet-id",
+                args.wallet_id,
+                "--code-file",
+                str(code_tar),
+                "--benchmark-log-file",
+                str(trial_log),
+                "--claimed-metric",
+                args.claimed_metric,
+                "--metric-scale",
+                str(args.metric_scale),
+                "--stake",
+                args.stake,
+                "--reward-recipient",
+                args.reward_recipient,
+                "--buy-value-wei",
+                args.buy_value_wei,
+            ]
+            if args.passphrase_file:
+                cmd.extend(["--passphrase-file", args.passphrase_file])
+            if args.project_id is not None:
+                cmd.extend(["--project-id", str(args.project_id)])
+            if args.token_address:
+                cmd.extend(["--token-address", args.token_address])
+            if args.auto_buy:
+                cmd.append("--auto-buy")
+            if args.dry_run:
+                cmd.append("--dry-run")
 
         result = run(cmd, cwd=SCRIPT_DIR, capture=True)
         submission = {
@@ -124,6 +173,7 @@ def main() -> int:
             "claimed_metric": args.claimed_metric,
             "stake": args.stake,
             "reward_recipient": args.reward_recipient,
+            "chain": args.chain,
             "dry_run": args.dry_run,
             "submit_output": result.stdout,
         }

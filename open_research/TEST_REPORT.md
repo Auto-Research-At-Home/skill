@@ -73,12 +73,12 @@ Result: publish plan and 0G Storage root hashes were generated successfully.
 ## Not Run
 
 - Live Solana `createProject` transaction, because this checkout does not
-  include the deployed Anchor IDL or a funded authority keypair.
+  include a funded authority keypair.
 - `initialize` and `addVerifier` transactions, for the same reason.
 
 ## Frontend Readiness Checklist
 
-- Copy the Anchor IDL into the frontend, for example:
+- Copy the bundled Anchor IDL into the frontend, for example:
   `src/idl/open_research.json`.
 - Configure:
 

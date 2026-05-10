@@ -4,6 +4,11 @@ See [`prompt_banner.md`](prompt_banner.md).
 
 # Verify loop (documentation)
 
+This prompt currently describes the legacy 0G verifier loop. For Solana
+projects, read `references/onchain-verify-solana.md` and use
+`settle_proposal_solana.mjs` for claim/approve/reject/release/expire
+transactions after artifact and benchmark checks.
+
 1. Discover claimable `proposalId`s (`watch_proposals.py` or `run_validate_loop.py`).
 2. Resolve code + miner benchmark log via `ARAH_ARTIFACT_INDEX` (`artifact_resolve.py`).
 3. Compare `protocol.json` SHA-256 to `ProjectRegistry.getProject(...).protocolHash` unless skipped by env.

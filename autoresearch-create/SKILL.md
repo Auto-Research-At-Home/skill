@@ -24,14 +24,17 @@ Use the bundled experiment-protocol toolkit in this skill directory. Do not modi
 - `scripts/render_program_md.py` and `templates/program.md.j2`: render `program.md` from finalized `protocol.json`.
 - `scripts/preview_metrics.py`: print a focused benchmark review block from `protocol.json` for the Step 5b approval gate.
 - `scripts/run_baseline.sh`: run setup plus the primary command from `protocol.json` and parse the baseline metric.
-- `scripts/publish_project_0g.mjs`: prepare and publish legacy 0G Galileo `ProjectRegistry.createProject(...)` via a localhost browser wallet flow, or write an unsigned transaction/dry-run artifact.
-- `scripts/publish_project_solana.mjs`: prepare a Solana OpenResearch `createProject` call while keeping 0G Storage artifact roots; dry-run emits PDA/account plans, live mode requires an Anchor IDL and Solana keypair.
+- `scripts/publish_project_solana.mjs`: default publish path. Prepares and publishes the Solana OpenResearch `createProject` call via a localhost browser wallet (Phantom/Solflare/Backpack/Wallet Standard); dry-run emits PDA/account plans, live mode uploads artifacts to Irys and submits via the connected wallet without a filesystem private key.
+- `scripts/local_solana_wallet_publish.mjs`: localhost HTTP + HTML page used by the Solana publish flow to discover Solana wallet extensions, upload artifacts to Irys, build the unsigned `createProject` transaction, and capture the wallet-signed transaction signature.
+- `scripts/irys_storage.mjs`: prepares raw SHA-256 artifact hashes, Irys browser upload plans, and `storage_irys.json` metadata for Solana publishes.
+- `scripts/publish_project_0g.mjs`: alternate path. Prepare and publish legacy 0G Galileo `ProjectRegistry.createProject(...)` via a localhost browser wallet flow, or write an unsigned transaction/dry-run artifact.
 - `scripts/solana_open_research.mjs`: Solana client helpers for RPC/program config, bytes32/u64/i64 conversion, PDAs, Associated Token Accounts, and Anchor account maps.
-- `contracts/0g-galileo-testnet/deployment.json`: deployed 0G Galileo testnet contract addresses and artifact paths.
+- `contracts/solana-open-research/deployment.json`: OpenResearch Solana program id, public cluster RPC defaults, and the path to the bundled Anchor IDL.
+- `contracts/solana-open-research/open_research.json`: bundled full Anchor IDL covering project creation, miner proposals, verifier settlement, reward claims, and account decoding. Used by default; override with `--idl` when testing another build.
+- `contracts/0g-galileo-testnet/deployment.json`: deployed 0G Galileo testnet contract addresses and artifact paths (alternate path).
 - `contracts/0g-galileo-testnet/artifacts/*.json`: ABI/artifact JSON for `ProjectRegistry`, `ProjectToken`, `ProposalLedger`, and `VerifierRegistry`.
-- `contracts/solana-open-research/deployment.json`: OpenResearch Solana program id and public cluster RPC defaults.
-- `references/onchain-0g-galileo.md`: ABI-derived on-chain create, mining, and review flow. Read it only for publish/mining/review work.
-- `references/onchain-solana.md`: Solana program id, PDA seeds, and publish flow. Read it for Solana publish work.
+- `references/onchain-solana.md`: Solana program id, PDA seeds, and publish flow. Read it for the default Solana publish work.
+- `references/onchain-0g-galileo.md`: ABI-derived on-chain create, mining, and review flow for the 0G Galileo alternate path.
 - `workflow.md`: detailed phase diagram. Read it when the user asks for process detail.
 
 ## Step 1: Collect inputs
@@ -198,38 +201,30 @@ Only ask to publish after:
 Ask the user directly:
 
 ```text
-The baseline is complete. Do you want me to publish this project to the 0G Galileo registry now?
+The baseline is complete. Do you want me to publish this project to the Solana OpenResearch registry now?
 ```
 
 Do not submit a transaction until the user approves publishing and the signing/wallet requirements are satisfied.
 
-The supported signing path is a temporary localhost browser wallet page. The CLI opens `http://127.0.0.1:<port>/...`, the browser discovers injected wallets with EIP-6963/EIP-1193, the user signs a SIWE-style publish approval message, the CLI verifies that signature locally, and the browser wallet submits `eth_sendTransaction`. Do not ask the user for a private key or seed phrase, and do not require a local private key environment variable.
+The default publish target is the Solana OpenResearch program. The default signing path is a temporary localhost browser wallet page. The CLI opens `http://127.0.0.1:<port>/...`; the browser discovers injected Solana wallets (Phantom, Solflare, Backpack) plus any Wallet Standard wallet, uploads the artifacts to Irys with the connected Solana wallet, then asks the user to approve a single `createProject` transaction. Do not ask the user for a private key, seed phrase, 0G key, or web2 API key. Pass `--keypair ~/.config/solana/id.json` only when the user explicitly opts into a filesystem keypair and `--allow-skip-storage`.
 
-For the Solana migration path, read `references/onchain-solana.md` before preparing any transaction. The active OpenResearch Solana program id is `ACfzPQJkUJ74bdnmvV6FmB8Me3s1cPA3ayWjt2vHRsv3`; `scripts/publish_project_solana.mjs` keeps 0G Storage for artifact roots and uses Solana PDAs/SPL token accounts for the registry transaction. Use `--dry-run --project-id <id>` first, then live mode with `--idl ./target/idl/open_research.json --keypair ~/.config/solana/id.json --yes` after the deployed program and IDL are available.
+Read `references/onchain-solana.md` before preparing the transaction. The active program id is `ACfzPQJkUJ74bdnmvV6FmB8Me3s1cPA3ayWjt2vHRsv3` on Solana devnet. `scripts/publish_project_solana.mjs` ships the bundled full Anchor IDL at `contracts/solana-open-research/open_research.json`; pass `--idl` only when testing another build.
 
-Read `references/onchain-0g-galileo.md` before preparing any legacy 0G Galileo transaction. Use `contracts/0g-galileo-testnet/deployment.json` for the legacy deployment:
+Prepare `createProject(...)` arguments from the approved protocol and baseline artifacts:
 
-- chain ID `16602`
-- RPC `https://evmrpc-testnet.0g.ai`
-- `ProjectRegistry` `0xc84768e450534974C0DD5BAb7c1b695744124136`
-- `ProposalLedger` `0x701db5f8Ed847651209A438695dfe5520adD6A5A`
-- `VerifierRegistry` `0x257974E406f206BfAEd3abB8D93C232e3226f032`
-
-Prepare `ProjectRegistry.createProject(...)` arguments from the approved protocol and baseline artifacts:
-
-- `protocolHash`, `repoSnapshotHash`, `benchmarkHash`, and `baselineMetricsHash` must be `bytes32`.
-- Prefer `--upload-artifacts-to-0g`; then those fields are the 0G Storage root hashes and `storage_0g_galileo.json` records retrieval metadata.
+- `protocolHash`, `repoSnapshotHash`, `benchmarkHash`, and `baselineMetricsHash` must be 32-byte hashes.
+- Prefer Irys storage (default for live Solana publishes, or `--upload-artifacts-to-irys` in dry-run). Those fields are raw SHA-256 hashes of the artifact bytes, while `storage_irys.json` records Irys ids and gateway URLs for retrieval.
 - `baselineAggregateScore` must be the agreed signed integer representation of the primary metric. Ask the user to confirm scaling for decimal metrics.
 - Ask for `tokenName`, `tokenSymbol`, `basePrice`, `slope`, and `minerPoolCap` if not already specified.
 
-0G Storage upload does not require a web2 API key. It requires a wallet signature and 0G balance for storage/chain fees. Use the localhost browser-wallet flow by default, or `ZG_STORAGE_PRIVATE_KEY` only when the user intentionally supplies a local publisher wallet. Do not use a backend-held key.
+Irys uses Solana wallet signing/payment: devnet/testnet publishes use Irys devnet, and mainnet-beta publishes use Irys mainnet. Override with `--irys-network devnet|mainnet` only when the user explicitly asks. Pass `--allow-skip-storage` only if the user intentionally wants registry hashes that point to nothing retrievable.
 
-After a successful transaction, record `projectId`, `tokenAddr`, transaction hash, chain ID, contract addresses, and `storage_0g_galileo.json` next to the protocol authoring bundle. Treat the emitted `ProjectCreated(projectId, creator, token, protocolHash)` event as canonical.
+After a successful transaction, record the Solana transaction signature, project id, creator pubkey, account map, instruction args, and `storage_irys.json` next to the protocol authoring bundle.
 
-Preferred command shape:
+Preferred command shape (browser wallet, default):
 
 ```bash
-node scripts/publish_project_0g.mjs \
+node scripts/publish_project_solana.mjs \
   --protocol-json <output-dir>/protocol.json \
   --repo-snapshot-file <repo-snapshot-artifact> \
   --benchmark-file <benchmark-artifact> \
@@ -237,14 +232,26 @@ node scripts/publish_project_0g.mjs \
   --baseline-aggregate-score <integer-score> \
   --token-name "<name>" \
   --token-symbol <symbol> \
-  --base-price <wei> \
-  --slope <wei> \
-  --miner-pool-cap <token-wei> \
-  --upload-artifacts-to-0g \
+  --base-price <lamports> \
+  --slope <lamports> \
+  --miner-pool-cap <token-units> \
+  --upload-artifacts-to-irys \
   --yes
 ```
 
-Use `--dry-run` first when values are uncertain. Use `--baseline-metric <decimal> --metric-scale <integer>` instead of `--baseline-aggregate-score` when the measured metric needs deterministic scaling.
+Use `--dry-run` first when values are uncertain (defaults `--project-id` to 0). Use `--baseline-metric <decimal> --metric-scale <integer>` instead of `--baseline-aggregate-score` when the measured metric needs deterministic scaling. The filesystem keypair path cannot upload to Irys; use the browser-wallet path unless the user explicitly chooses `--keypair ... --allow-skip-storage`.
+
+### Alternate path: 0G Galileo
+
+The legacy 0G Galileo EVM registry remains supported. Use it only when the user explicitly asks. Read `references/onchain-0g-galileo.md` before preparing that transaction. Use `contracts/0g-galileo-testnet/deployment.json` for the legacy deployment:
+
+- chain ID `16602`
+- RPC `https://evmrpc-testnet.0g.ai`
+- `ProjectRegistry` `0xc84768e450534974C0DD5BAb7c1b695744124136`
+- `ProposalLedger` `0x701db5f8Ed847651209A438695dfe5520adD6A5A`
+- `VerifierRegistry` `0x257974E406f206BfAEd3abB8D93C232e3226f032`
+
+The 0G Galileo path uses `scripts/publish_project_0g.mjs` with the same browser-wallet flow (EIP-6963, SIWE-style approval, then `eth_sendTransaction`).
 
 ## Final response
 

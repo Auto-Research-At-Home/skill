@@ -411,6 +411,7 @@ export function parseArgs(argv) {
     "help",
     "noOpen",
     "uploadArtifactsTo0g",
+    "uploadArtifactsToIrys",
     "storageOnly",
     "allowSkipStorage",
   ]);

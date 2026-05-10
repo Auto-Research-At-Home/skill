@@ -270,6 +270,23 @@ export function createProjectAccounts({
   };
 }
 
+export function submitInstructionArgs(inputs) {
+  return {
+    projectId: u64Bn(inputs.projectId, "projectId"),
+    codeHash: hex32ToBytes(inputs.codeHash, "codeHash"),
+    benchmarkLogHash: hex32ToBytes(
+      inputs.benchmarkLogHash,
+      "benchmarkLogHash",
+    ),
+    claimedAggregateScore: i64Bn(
+      inputs.claimedAggregateScore,
+      "claimedAggregateScore",
+    ),
+    stake: u64Bn(inputs.stake, "stake"),
+    rewardRecipient: publicKeyFrom(inputs.rewardRecipient, "rewardRecipient"),
+  };
+}
+
 export function submitProposalAccounts({
   miner,
   projectId,
@@ -291,6 +308,125 @@ export function submitProposalAccounts({
     tokenProgram: TOKEN_PROGRAM_ID,
     systemProgram: SystemProgram.programId,
     rent: SYSVAR_RENT_PUBKEY,
+  };
+}
+
+export function claimReviewAccounts({
+  verifier,
+  proposalId,
+  programId = OPEN_RESEARCH_PROGRAM_ID,
+}) {
+  const pdas = createOpenResearchPdas(programId);
+  const verifierPk = publicKeyFrom(verifier, "verifier");
+  return {
+    verifier: verifierPk,
+    verifierEntry: pdas.verifier(verifierPk),
+    proposal: pdas.proposal(proposalId),
+  };
+}
+
+export function releaseReviewAccounts({
+  cranker,
+  proposalId,
+  programId = OPEN_RESEARCH_PROGRAM_ID,
+}) {
+  const pdas = createOpenResearchPdas(programId);
+  return {
+    cranker: publicKeyFrom(cranker, "cranker"),
+    proposal: pdas.proposal(proposalId),
+  };
+}
+
+export function approveProposalAccounts({
+  verifier,
+  projectId,
+  proposalId,
+  miner,
+  rewardRecipient,
+  programId = OPEN_RESEARCH_PROGRAM_ID,
+}) {
+  const pdas = createOpenResearchPdas(programId);
+  const mint = pdas.mint(projectId);
+  const verifierPk = publicKeyFrom(verifier, "verifier");
+  return {
+    verifier: verifierPk,
+    verifierEntry: pdas.verifier(verifierPk),
+    proposal: pdas.proposal(proposalId),
+    project: pdas.project(projectId),
+    mint,
+    mintAuthority: pdas.mintAuthority(projectId),
+    proposalEscrow: pdas.proposalEscrow(proposalId),
+    minerTokenAccount: userProjectTokenAccount(mint, publicKeyFrom(miner, "miner")),
+    rewardRecipientTokenAccount: userProjectTokenAccount(
+      mint,
+      publicKeyFrom(rewardRecipient, "rewardRecipient"),
+    ),
+    tokenProgram: TOKEN_PROGRAM_ID,
+  };
+}
+
+export function rejectProposalAccounts({
+  verifier,
+  projectId,
+  proposalId,
+  programId = OPEN_RESEARCH_PROGRAM_ID,
+}) {
+  const pdas = createOpenResearchPdas(programId);
+  const verifierPk = publicKeyFrom(verifier, "verifier");
+  return {
+    verifier: verifierPk,
+    verifierEntry: pdas.verifier(verifierPk),
+    proposal: pdas.proposal(proposalId),
+    project: pdas.project(projectId),
+    mint: pdas.mint(projectId),
+    mintAuthority: pdas.mintAuthority(projectId),
+    proposalEscrow: pdas.proposalEscrow(proposalId),
+    projectPool: pdas.projectPool(projectId),
+    claimable: pdas.claimable(projectId, verifierPk),
+    tokenProgram: TOKEN_PROGRAM_ID,
+    systemProgram: SystemProgram.programId,
+  };
+}
+
+export function expireProposalAccounts({
+  cranker,
+  projectId,
+  proposalId,
+  programId = OPEN_RESEARCH_PROGRAM_ID,
+}) {
+  const pdas = createOpenResearchPdas(programId);
+  const crankerPk = publicKeyFrom(cranker, "cranker");
+  return {
+    cranker: crankerPk,
+    proposal: pdas.proposal(proposalId),
+    project: pdas.project(projectId),
+    mint: pdas.mint(projectId),
+    mintAuthority: pdas.mintAuthority(projectId),
+    proposalEscrow: pdas.proposalEscrow(proposalId),
+    projectPool: pdas.projectPool(projectId),
+    claimable: pdas.claimable(projectId, crankerPk),
+    tokenProgram: TOKEN_PROGRAM_ID,
+    systemProgram: SystemProgram.programId,
+  };
+}
+
+export function claimRewardAccounts({
+  claimer,
+  projectId,
+  programId = OPEN_RESEARCH_PROGRAM_ID,
+}) {
+  const pdas = createOpenResearchPdas(programId);
+  const claimerPk = publicKeyFrom(claimer, "claimer");
+  const mint = pdas.mint(projectId);
+  return {
+    claimer: claimerPk,
+    project: pdas.project(projectId),
+    mint,
+    mintAuthority: pdas.mintAuthority(projectId),
+    projectPool: pdas.projectPool(projectId),
+    claimable: pdas.claimable(projectId, claimerPk),
+    claimerTokenAccount: userProjectTokenAccount(mint, claimerPk),
+    tokenProgram: TOKEN_PROGRAM_ID,
   };
 }
 
