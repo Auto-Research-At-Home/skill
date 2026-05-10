@@ -455,6 +455,15 @@ test("Solana wallet page renders a local connect step before remote SDK imports"
     assert.match(html, /const bootProgress =/);
     assert.match(html, /renderProgress\(bootProgress\)/);
     assert.match(html, /Connect your Solana wallet/);
+    assert.match(html, /<script type="importmap">/);
+    assert.match(html, /@noble\/curves@1\.9\.7\/esm\//);
+    assert.match(html, /@noble\/hashes@1\.8\.0\/esm\//);
+    assert.match(html, /irys-bundles-shim\.mjs/);
+    assert.match(html, /node-crypto-shim\.mjs/);
+    assert.match(html, /node-stream-shim\.mjs/);
+    assert.match(html, /buffer@6\.0\.3\?bundle/);
+    assert.match(html, /uuid@8\.3\.2\/dist\/esm-browser\//);
+    assert.match(html, /@irys\/web-upload-solana@0\.1\.8\?bundle&deps=@irys\/bundles@0\.0\.5/);
     assert.equal(/import\\s*\\{[^}]*Connection[^}]*\\}\\s*from/.test(html), false);
     assert.equal(
       html.includes('import("https://esm.sh/@solana/web3.js'),

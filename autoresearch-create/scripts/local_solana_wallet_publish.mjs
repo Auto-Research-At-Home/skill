@@ -79,6 +79,18 @@ export async function startLocalSolanaWalletPublish({
         sendHtml(res, renderSignPage());
         return;
       }
+      if (req.method === "GET" && route === "/irys-bundles-shim.mjs") {
+        sendJs(res, renderIrysBundlesShim());
+        return;
+      }
+      if (req.method === "GET" && route === "/node-stream-shim.mjs") {
+        sendJs(res, renderNodeStreamShim());
+        return;
+      }
+      if (req.method === "GET" && route === "/node-crypto-shim.mjs") {
+        sendJs(res, renderNodeCryptoShim());
+        return;
+      }
       if (req.method === "GET" && route === "/session") {
         sendJson(res, 200, {
           chain: { cluster, rpcUrl, programId: String(programId) },
@@ -454,6 +466,24 @@ function renderSignPage() {
     <pre id="summaryJson"></pre>
   </details>
 </main>
+<script type="importmap">
+{
+  "imports": {
+    "https://esm.sh/@noble/curves/esm/": "https://esm.sh/@noble/curves@1.9.7/esm/",
+    "https://esm.sh/@noble/hashes/esm/": "https://esm.sh/@noble/hashes@1.8.0/esm/",
+    "https://esm.sh/@irys/bundles@0.0.5/es2022/bundles.mjs": "./irys-bundles-shim.mjs",
+    "https://esm.sh/node/crypto.mjs": "./node-crypto-shim.mjs",
+    "https://esm.sh/node/stream.mjs": "./node-stream-shim.mjs",
+    "https://esm.sh/uuid/dist/esm-browser/": "https://esm.sh/uuid@8.3.2/dist/esm-browser/",
+    "/@noble/curves/esm/": "https://esm.sh/@noble/curves@1.9.7/esm/",
+    "/@noble/hashes/esm/": "https://esm.sh/@noble/hashes@1.8.0/esm/",
+    "/@irys/bundles@0.0.5/es2022/bundles.mjs": "./irys-bundles-shim.mjs",
+    "/node/crypto.mjs": "./node-crypto-shim.mjs",
+    "/node/stream.mjs": "./node-stream-shim.mjs",
+    "/uuid/dist/esm-browser/": "https://esm.sh/uuid@8.3.2/dist/esm-browser/"
+  }
+}
+</script>
 <script type="module">
 const stepsEl = document.getElementById("steps");
 const summaryJsonEl = document.getElementById("summaryJson");
@@ -491,13 +521,18 @@ function loadSolanaWeb3() {
 
 async function loadIrysModules() {
   if (!irysModulesPromise) {
-    irysModulesPromise = Promise.all([
-      import("https://esm.sh/@irys/web-upload?bundle"),
-      import("https://esm.sh/@irys/web-upload-solana?bundle"),
-    ]).then(([webUpload, webSolana]) => ({
-      WebUploader: webUpload.WebUploader,
-      WebSolana: webSolana.WebSolana,
-    }));
+    irysModulesPromise = import("https://esm.sh/buffer@6.0.3?bundle")
+      .then((bufferModule) => {
+        if (!globalThis.Buffer) globalThis.Buffer = bufferModule.Buffer;
+        return Promise.all([
+          import("https://esm.sh/@irys/web-upload?bundle"),
+          import("https://esm.sh/@irys/web-upload-solana@0.1.8?bundle&deps=@irys/bundles@0.0.5"),
+        ]);
+      })
+      .then(([webUpload, webSolana]) => ({
+        WebUploader: webUpload.WebUploader,
+        WebSolana: webSolana.WebSolana,
+      }));
   }
   return irysModulesPromise;
 }
@@ -743,7 +778,8 @@ async function uploadArtifactsToIrys(plan, chain) {
       }
 
       setWalletStatus("Uploading " + artifact.name + " to Irys…");
-      const receipt = await irys.upload(bytes, { tags: artifact.tags || [] });
+      const payload = globalThis.Buffer ? globalThis.Buffer.from(bytes) : bytes;
+      const receipt = await irys.upload(payload, { tags: artifact.tags || [] });
       artifacts[artifact.name] = {
         id: receipt.id,
         signature: receipt.signature,
@@ -984,6 +1020,146 @@ function bs58Encode(bytes) {
 </html>`;
 }
 
+function renderIrysBundlesShim() {
+  return `export * from "https://esm.sh/@irys/bundles@0.0.5/es2022/bundles.mjs?shim-source";
+export { default } from "https://esm.sh/@irys/bundles@0.0.5/es2022/bundles.mjs?shim-source";
+export { default as ArweaveSigner } from "https://esm.sh/@irys/bundles@0.0.5/es2022/build/web/esm/src/signing/chains/ArweaveSigner.mjs";
+`;
+}
+
+function renderNodeStreamShim() {
+  return `class SimpleStream {
+  constructor() {
+    this.listeners = new Map();
+  }
+  on(type, fn) {
+    const list = this.listeners.get(type) || [];
+    list.push(fn);
+    this.listeners.set(type, list);
+    return this;
+  }
+  once(type, fn) {
+    const onceFn = (...args) => {
+      this.removeListener(type, onceFn);
+      fn(...args);
+    };
+    return this.on(type, onceFn);
+  }
+  removeListener(type, fn) {
+    const list = this.listeners.get(type) || [];
+    this.listeners.set(type, list.filter((item) => item !== fn));
+    return this;
+  }
+  emit(type, ...args) {
+    for (const fn of this.listeners.get(type) || []) fn(...args);
+    return true;
+  }
+  write(chunk) {
+    this.emit("data", chunk);
+    return true;
+  }
+  end(chunk) {
+    if (chunk !== undefined) this.write(chunk);
+    this.emit("end");
+    return this;
+  }
+  read() {
+    return null;
+  }
+  push(chunk) {
+    if (chunk !== null && chunk !== undefined) this.emit("data", chunk);
+    return true;
+  }
+  pipe(dest) {
+    this.on("data", (chunk) => dest.write?.(chunk));
+    this.on("end", () => dest.end?.());
+    return dest;
+  }
+  destroy(err) {
+    if (err) this.emit("error", err);
+    this.emit("close");
+  }
+}
+export class PassThrough extends SimpleStream {}
+export class Transform extends SimpleStream {}
+export class Readable extends SimpleStream {}
+export class Writable extends SimpleStream {}
+export default { PassThrough, Transform, Readable, Writable };
+`;
+}
+
+function renderNodeCryptoShim() {
+  return `import { sha256 } from "https://esm.sh/@noble/hashes@1.8.0/sha2?bundle";
+
+function toBytes(value) {
+  if (value instanceof Uint8Array) return value;
+  if (typeof value === "string") return new TextEncoder().encode(value);
+  if (value instanceof ArrayBuffer) return new Uint8Array(value);
+  if (ArrayBuffer.isView(value)) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  }
+  return new Uint8Array(value || []);
+}
+
+function concatBytes(chunks) {
+  const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out;
+}
+
+export function createHash(algorithm) {
+  const name = String(algorithm || "").toLowerCase();
+  if (name !== "sha256") {
+    throw new Error("Unsupported hash algorithm in browser shim: " + algorithm);
+  }
+  const chunks = [];
+  return {
+    update(value) {
+      chunks.push(toBytes(value));
+      return this;
+    },
+    digest(encoding) {
+      const digest = sha256(concatBytes(chunks));
+      if (encoding === "hex") {
+        return Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
+      }
+      if (encoding === "base64") {
+        let binary = "";
+        for (const byte of digest) binary += String.fromCharCode(byte);
+        return btoa(binary);
+      }
+      return globalThis.Buffer ? globalThis.Buffer.from(digest) : digest;
+    },
+  };
+}
+
+export function randomBytes(size) {
+  const bytes = new Uint8Array(Number(size));
+  crypto.getRandomValues(bytes);
+  return globalThis.Buffer ? globalThis.Buffer.from(bytes) : bytes;
+}
+
+export const constants = {
+  RSA_PKCS1_PSS_PADDING: 6,
+};
+
+export function createSign() {
+  throw new Error("createSign is not available in this browser shim");
+}
+
+export function createVerify() {
+  throw new Error("createVerify is not available in this browser shim");
+}
+
+export default { constants, createHash, createSign, createVerify, randomBytes };
+`;
+}
+
 function localOrigin(server) {
   const address = server.address();
   return `http://127.0.0.1:${address.port}`;
@@ -1053,6 +1229,14 @@ function sendJson(res, statusCode, body) {
 function sendHtml(res, body) {
   res.writeHead(200, {
     "content-type": "text/html; charset=utf-8",
+    "cache-control": "no-store",
+  });
+  res.end(body);
+}
+
+function sendJs(res, body) {
+  res.writeHead(200, {
+    "content-type": "application/javascript; charset=utf-8",
     "cache-control": "no-store",
   });
   res.end(body);
