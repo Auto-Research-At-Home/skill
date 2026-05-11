@@ -71,6 +71,13 @@ def main() -> int:
     parser.add_argument("--solana-cluster", help="Solana cluster override.")
     parser.add_argument("--solana-rpc-url", help="Solana RPC URL override.")
     parser.add_argument("--solana-proposal-id", help="Proposal id override, mainly for dry-runs.")
+    parser.add_argument("--solana-code-irys-id", help="Irys id for the submitted code archive.")
+    parser.add_argument("--solana-benchmark-log-irys-id", help="Irys id for the submitted benchmark log.")
+    parser.add_argument(
+        "--solana-allow-missing-irys-ids",
+        action="store_true",
+        help="Submit zero Irys ids for legacy dry-runs only.",
+    )
     parser.add_argument("--yes", action="store_true", help="Confirm live Solana transaction submission.")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
@@ -126,6 +133,12 @@ def main() -> int:
                 cmd.extend(["--rpc-url", args.solana_rpc_url])
             if args.solana_proposal_id:
                 cmd.extend(["--proposal-id", args.solana_proposal_id])
+            if args.solana_code_irys_id:
+                cmd.extend(["--code-irys-id", args.solana_code_irys_id])
+            if args.solana_benchmark_log_irys_id:
+                cmd.extend(["--benchmark-log-irys-id", args.solana_benchmark_log_irys_id])
+            if args.solana_allow_missing_irys_ids:
+                cmd.append("--allow-missing-irys-ids")
             if args.yes:
                 cmd.append("--yes")
             if args.dry_run:

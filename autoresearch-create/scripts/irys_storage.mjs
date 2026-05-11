@@ -69,6 +69,30 @@ export function applyIrysArtifactHashes(options, storageArtifacts) {
   };
 }
 
+export function applyIrysArtifactIds(options, storageArtifacts) {
+  return {
+    ...options,
+    protocolIrysId: requireIrysId(storageArtifacts.protocol, "protocolIrysId"),
+    repoSnapshotIrysId: requireIrysId(
+      storageArtifacts.repoSnapshot,
+      "repoSnapshotIrysId",
+    ),
+    benchmarkIrysId: requireIrysId(storageArtifacts.benchmark, "benchmarkIrysId"),
+    baselineMetricsIrysId: requireIrysId(
+      storageArtifacts.baselineMetrics,
+      "baselineMetricsIrysId",
+    ),
+  };
+}
+
+function requireIrysId(artifact, label) {
+  const id = artifact?.irys?.id || artifact?.id;
+  if (!id) {
+    throw new Error(`${label} requires an uploaded Irys receipt id`);
+  }
+  return String(id);
+}
+
 export function buildIrysBrowserUploadPlan({ storageArtifacts, network }) {
   return {
     network: network.name,

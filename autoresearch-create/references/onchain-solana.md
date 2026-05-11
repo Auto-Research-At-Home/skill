@@ -22,8 +22,9 @@ NEXT_PUBLIC_OPEN_RESEARCH_PROGRAM_ID=ACfzPQJkUJ74bdnmvV6FmB8Me3s1cPA3ayWjt2vHRsv
 
 Irys is the default artifact layer for the Solana path. The Solana program
 stores 32-byte SHA-256 hashes of the raw protocol, repo snapshot, benchmark
-bundle, and baseline metrics files. `storage_irys.json` records Irys ids and
-gateway URLs for retrieval metadata.
+bundle, and baseline metrics files plus the 32-byte Irys transaction ids for
+those same artifacts. `storage_irys.json` records the human-readable Irys ids,
+gateway URLs, and upload receipts.
 
 Devnet/testnet publishes use Irys devnet, which is suitable for testing and
 may expire after the devnet retention window. Mainnet-beta publishes use Irys
@@ -83,8 +84,9 @@ The CLI:
 2. Opens `http://127.0.0.1:<port>/<token>/sign` in the browser.
 3. Waits for the user to connect a Solana wallet there.
 4. The browser uploads the artifacts to Irys and returns upload receipts.
-5. Reads the on-chain `GlobalConfig.next_project_id`, builds the
-   `createProject` instruction, and hands it to the page.
+5. Converts returned Irys ids into their 32-byte on-chain form, reads
+   `GlobalConfig.next_project_id`, builds the `createProject` instruction, and
+   hands it to the page.
 6. Waits for the wallet to sign and submit the transaction, then confirms
    the signature on devnet.
 

@@ -13,9 +13,20 @@ function usage() {
   node scripts/download_irys_artifacts.mjs \\
     --output-dir /tmp/arah-project/artifacts \\
     --protocol-hash 0x... \\
+    --protocol-irys-id <id> \\
     --repo-snapshot-hash 0x... \\
+    --repo-snapshot-irys-id <id> \\
     --benchmark-hash 0x... \\
-    --baseline-metrics-hash 0x...
+    --benchmark-irys-id <id> \\
+    --baseline-metrics-hash 0x... \\
+    --baseline-metrics-irys-id <id>
+
+  node scripts/download_irys_artifacts.mjs \\
+    --output-dir /tmp/arah-proposal/artifacts \\
+    --code-hash 0x... \\
+    --code-irys-id <id> \\
+    --benchmark-log-hash 0x... \\
+    --benchmark-log-irys-id <id>
 
 Options:
   --gateway-url <url>      Irys gateway (default: devnet gateway).
@@ -72,6 +83,26 @@ function sha256Bytes32(filePath) {
   return `0x${h.digest("hex")}`;
 }
 
+function normalizeIrysId(value, label) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  if (BYTES32_RE.test(text)) {
+    const hex = text.startsWith("0x") ? text.slice(2) : text;
+    return Buffer.from(hex, "hex")
+      .toString("base64")
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/g, "");
+  }
+  const normalized = text.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+  const decoded = Buffer.from(padded, "base64");
+  if (decoded.length !== 32) {
+    throw new Error(`${label} must be a 32-byte Irys/Arweave transaction id`);
+  }
+  return text;
+}
+
 async function fetchJson(url, body) {
   const res = await fetch(url, {
     method: "POST",
@@ -97,7 +128,8 @@ function idFromManifest(manifest, name) {
   return artifact?.irys?.id || artifact?.id || null;
 }
 
-async function findIrysId({ gatewayUrl, name, hash, manifest }) {
+async function findIrysId({ gatewayUrl, name, hash, irysId, manifest }) {
+  if (irysId) return normalizeIrysId(irysId, `${name}IrysId`);
   const fromManifest = idFromManifest(manifest, name);
   if (fromManifest) return fromManifest;
 
@@ -125,9 +157,9 @@ async function findIrysId({ gatewayUrl, name, hash, manifest }) {
   return id;
 }
 
-async function downloadOne({ gatewayUrl, name, hash, filePath, manifest, skipExisting }) {
+async function downloadOne({ gatewayUrl, name, hash, irysId, filePath, manifest, skipExisting }) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const id = await findIrysId({ gatewayUrl, name, hash, manifest });
+  const id = await findIrysId({ gatewayUrl, name, hash, irysId, manifest });
   const uri = `${gatewayUrl}/${id}`;
   if (!skipExisting || !fs.existsSync(filePath)) {
     console.log(`[Irys] downloading ${name}: ${uri}`);
@@ -166,26 +198,71 @@ async function main() {
   const manifest = options.manifest
     ? JSON.parse(fs.readFileSync(path.resolve(options.manifest), "utf8"))
     : null;
-  const hashes = {
-    protocol: requireBytes32(options.protocolHash, "protocolHash"),
-    repoSnapshot: requireBytes32(options.repoSnapshotHash, "repoSnapshotHash"),
-    benchmark: requireBytes32(options.benchmarkHash, "benchmarkHash"),
-    baselineMetrics: requireBytes32(options.baselineMetricsHash, "baselineMetricsHash"),
-  };
-  const outputs = {
-    protocol: path.join(outputDir, "protocol.json"),
-    repoSnapshot: path.join(outputDir, "repo-snapshot.tar"),
-    benchmark: path.join(outputDir, "benchmark.tar"),
-    baselineMetrics: path.join(outputDir, "baseline-metrics.log"),
-  };
+  const specs = [];
+  if (options.protocolHash) {
+    specs.push(
+      {
+        name: "protocol",
+        hash: requireBytes32(options.protocolHash, "protocolHash"),
+        irysId: options.protocolIrysId,
+        output: path.join(outputDir, "protocol.json"),
+      },
+      {
+        name: "repoSnapshot",
+        hash: requireBytes32(options.repoSnapshotHash, "repoSnapshotHash"),
+        irysId: options.repoSnapshotIrysId,
+        output: path.join(outputDir, "repo-snapshot.tar"),
+      },
+      {
+        name: "benchmark",
+        hash: requireBytes32(options.benchmarkHash, "benchmarkHash"),
+        irysId: options.benchmarkIrysId,
+        output: path.join(outputDir, "benchmark.tar"),
+      },
+      {
+        name: "baselineMetrics",
+        hash: requireBytes32(options.baselineMetricsHash, "baselineMetricsHash"),
+        irysId: options.baselineMetricsIrysId,
+        output: path.join(outputDir, "baseline-metrics.log"),
+      },
+    );
+  }
+  if (options.codeHash) {
+    specs.push(
+      {
+        name: "code",
+        hash: requireBytes32(options.codeHash, "codeHash"),
+        irysId: options.codeIrysId,
+        output: path.join(outputDir, "code.tar"),
+      },
+      {
+        name: "benchmarkLog",
+        hash: requireBytes32(options.benchmarkLogHash, "benchmarkLogHash"),
+        irysId: options.benchmarkLogIrysId,
+        output: path.join(outputDir, "benchmark.log"),
+      },
+    );
+  }
+  if (options.metricsHash) {
+    specs.push({
+      name: "metrics",
+      hash: requireBytes32(options.metricsHash, "metricsHash"),
+      irysId: options.metricsIrysId,
+      output: path.join(outputDir, "metrics.log"),
+    });
+  }
+  if (specs.length === 0) {
+    throw new Error("provide either project artifact hashes or proposal artifact hashes");
+  }
 
   const artifacts = {};
-  for (const [name, hash] of Object.entries(hashes)) {
-    artifacts[name] = await downloadOne({
+  for (const spec of specs) {
+    artifacts[spec.name] = await downloadOne({
       gatewayUrl,
-      name,
-      hash,
-      filePath: outputs[name],
+      name: spec.name,
+      hash: spec.hash,
+      irysId: spec.irysId,
+      filePath: spec.output,
       manifest,
       skipExisting: Boolean(options.skipExisting),
     });

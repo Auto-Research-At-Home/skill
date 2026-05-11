@@ -85,6 +85,7 @@ Initialize with **`scripts/init_verify_workspace.sh <repo_root>`**.
 | `vendor/harness/` | `run_baseline.sh` trial harness (sync with create/mine) |
 | `scripts/chain_config.py` | Resolve deployment + env |
 | `scripts/artifact_resolve.py` | Download tarball + verify `codeHash`; verify miner benchmark log vs `benchmarkLogHash` |
+| `scripts/resolve_proposal_artifacts_solana.mjs` | Fetch Solana `Proposal`, download code/log by on-chain Irys ids, and verify hashes. |
 | `scripts/verify_static_gates.py` | Forbidden globs + permit lists + red-flag regex |
 | `scripts/run_verify_trial.sh` | Runs harness under `.autoresearch/verify/runs/` |
 | `scripts/run_validate_loop.py` | End-to-end unattended pipeline |
@@ -106,8 +107,10 @@ Initialize with **`scripts/init_verify_workspace.sh <repo_root>`**.
 ## Pipeline ordering (normative)
 
 The ordering below is for the legacy 0G path. For Solana projects, use
-`references/onchain-verify-solana.md` and `settle_proposal_solana.mjs` for
-the matching settlement action after artifact and benchmark checks.
+`references/onchain-verify-solana.md`, fetch artifacts with
+`resolve_proposal_artifacts_solana.mjs`, and use
+`settle_proposal_solana.mjs` for the matching settlement action after artifact
+and benchmark checks.
 
 1. **`getProposal`**: skip if `status` ∉ claimable set ([`constants/status_enum.json`](constants/status_enum.json)).
 2. **`artifact_resolve`**: fail → **skip** (no chain tx), record `artifact_resolve_failed`.

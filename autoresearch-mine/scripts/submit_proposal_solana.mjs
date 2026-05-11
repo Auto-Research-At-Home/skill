@@ -46,13 +46,16 @@ Options:
   --metric-scale <n>       Decimal metric scale. Defaults to ARAH_METRIC_SCALE or 1000000.
   --claimed-score-int256   Use an already scaled i64 score instead of --claimed-metric.
   --code-hash              0x-prefixed SHA-256 bytes32, instead of --code-file.
+  --code-irys-id           Irys/Arweave transaction id for the code archive.
   --benchmark-log-hash     0x-prefixed SHA-256 bytes32, instead of --benchmark-log-file.
+  --benchmark-log-irys-id  Irys/Arweave transaction id for the benchmark log.
+  --allow-missing-irys-ids Use zero Irys ids. Intended only for legacy dry-runs.
 `);
 }
 
 function parseArgs(argv) {
   const options = {};
-  const boolKeys = new Set(["help", "dryRun", "yes"]);
+  const boolKeys = new Set(["help", "dryRun", "yes", "allowMissingIrysIds"]);
   for (let i = 0; i < argv.length; i += 1) {
     const raw = argv[i];
     if (!raw.startsWith("--")) {
@@ -97,6 +100,17 @@ function hashFileBytes32(filePath) {
   const h = crypto.createHash("sha256");
   h.update(fs.readFileSync(filePath));
   return `0x${h.digest("hex")}`;
+}
+
+function resolveIrysIdOption({ solana, value, label, live, allowMissing }) {
+  if (value) {
+    solana.irysIdToBytes32(value, label);
+    return String(value);
+  }
+  if (live && !allowMissing) {
+    throw new Error(`${label} is required for live Solana submission`);
+  }
+  return solana.ZERO_IRYS_ID;
 }
 
 function decimalMetricToScaledInt(text, scale) {
@@ -148,9 +162,23 @@ async function main() {
   const codeHash = options.codeFile
     ? hashFileBytes32(path.resolve(options.codeFile))
     : requireBytes32(options.codeHash, "codeHash");
+  const codeIrysId = resolveIrysIdOption({
+    solana,
+    value: options.codeIrysId,
+    label: "codeIrysId",
+    live: !options.dryRun,
+    allowMissing: Boolean(options.allowMissingIrysIds),
+  });
   const benchmarkLogHash = options.benchmarkLogFile
     ? hashFileBytes32(path.resolve(options.benchmarkLogFile))
     : requireBytes32(options.benchmarkLogHash, "benchmarkLogHash");
+  const benchmarkLogIrysId = resolveIrysIdOption({
+    solana,
+    value: options.benchmarkLogIrysId,
+    label: "benchmarkLogIrysId",
+    live: !options.dryRun,
+    allowMissing: Boolean(options.allowMissingIrysIds),
+  });
   const claimedAggregateScore =
     options.claimedScoreInt256 ??
     decimalMetricToScaledInt(
@@ -194,7 +222,9 @@ async function main() {
   const instructionArgs = solana.submitInstructionArgs({
     projectId: options.projectId,
     codeHash,
+    codeIrysId,
     benchmarkLogHash,
+    benchmarkLogIrysId,
     claimedAggregateScore,
     stake,
     rewardRecipient: options.rewardRecipient,
@@ -225,7 +255,9 @@ async function main() {
     .submit(
       instructionArgs.projectId,
       instructionArgs.codeHash,
+      instructionArgs.codeIrysId,
       instructionArgs.benchmarkLogHash,
+      instructionArgs.benchmarkLogIrysId,
       instructionArgs.claimedAggregateScore,
       instructionArgs.stake,
       instructionArgs.rewardRecipient,

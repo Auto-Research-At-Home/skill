@@ -34,12 +34,13 @@ function usage() {
 
 Dry-runs can use --actor <SOLANA_PUBKEY> instead of --keypair. For approve,
 reject, and expire dry-runs also pass --project-id. Approve dry-runs need
---miner and --reward-recipient unless a live RPC fetch is available.`);
+--miner and --reward-recipient unless a live RPC fetch is available.
+Approve/reject also require --metrics-irys-id for live settlement.`);
 }
 
 function parseArgs(argv) {
   const options = {};
-  const boolKeys = new Set(["help", "dryRun", "yes"]);
+  const boolKeys = new Set(["help", "dryRun", "yes", "allowMissingIrysId"]);
   for (let i = 0; i < argv.length; i += 1) {
     const raw = argv[i];
     if (!raw.startsWith("--")) throw new Error(`unexpected argument: ${raw}`);
@@ -80,6 +81,17 @@ function hashFileBytes32(filePath) {
   const h = crypto.createHash("sha256");
   h.update(fs.readFileSync(filePath));
   return `0x${h.digest("hex")}`;
+}
+
+function resolveMetricsIrysId({ solana, value, live, allowMissing }) {
+  if (value) {
+    solana.irysIdToBytes32(value, "metricsIrysId");
+    return String(value);
+  }
+  if (live && !allowMissing) {
+    throw new Error("metricsIrysId is required for live approve/reject settlement");
+  }
+  return solana.ZERO_IRYS_ID;
 }
 
 function decimalMetricToScaledInt(text, scale) {
@@ -210,6 +222,12 @@ async function main() {
     const metricsHash = options.metricsLogFile
       ? hashFileBytes32(path.resolve(options.metricsLogFile))
       : requireBytes32(options.metricsHash, "metricsHash");
+    const metricsIrysId = resolveMetricsIrysId({
+      solana,
+      value: options.metricsIrysId,
+      live: !options.dryRun,
+      allowMissing: Boolean(options.allowMissingIrysId),
+    });
     const score =
       options.verifiedScoreInt256 ??
       decimalMetricToScaledInt(
@@ -229,6 +247,7 @@ async function main() {
       proposalId: options.proposalId,
       verifiedAggregateScore: score,
       metricsHash,
+      metricsIrysId,
     };
   } else if (action === "reject") {
     proposalIdRequired(options);
@@ -236,6 +255,12 @@ async function main() {
     const metricsHash = options.metricsLogFile
       ? hashFileBytes32(path.resolve(options.metricsLogFile))
       : requireBytes32(options.metricsHash, "metricsHash");
+    const metricsIrysId = resolveMetricsIrysId({
+      solana,
+      value: options.metricsIrysId,
+      live: !options.dryRun,
+      allowMissing: Boolean(options.allowMissingIrysId),
+    });
     method = "open_research.reject";
     accounts = solana.rejectProposalAccounts({
       verifier: actor,
@@ -243,7 +268,7 @@ async function main() {
       proposalId: options.proposalId,
       programId: config.programId,
     });
-    args = { proposalId: options.proposalId, metricsHash };
+    args = { proposalId: options.proposalId, metricsHash, metricsIrysId };
   } else if (action === "expire") {
     proposalIdRequired(options);
     if (!projectId) throw new Error("--project-id is required");
@@ -298,6 +323,7 @@ async function main() {
         solana.u64Bn(options.proposalId, "proposalId"),
         solana.i64Bn(args.verifiedAggregateScore, "verifiedAggregateScore"),
         solana.hex32ToBytes(args.metricsHash, "metricsHash"),
+        solana.irysIdToBytes32(args.metricsIrysId, "metricsIrysId"),
       )
       .accounts(accounts)
       .rpc();
@@ -306,6 +332,7 @@ async function main() {
       .reject(
         solana.u64Bn(options.proposalId, "proposalId"),
         solana.hex32ToBytes(args.metricsHash, "metricsHash"),
+        solana.irysIdToBytes32(args.metricsIrysId, "metricsIrysId"),
       )
       .accounts(accounts)
       .rpc();

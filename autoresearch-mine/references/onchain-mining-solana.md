@@ -9,10 +9,12 @@ program, and project artifacts are stored on Irys.
 - Project ids are Solana `u64` ids, not 0G EVM registry ids.
 - Project/token/proposal addresses are PDAs, not deployed EVM contract
   addresses.
-- Artifact fields are raw SHA-256 bytes32 values for file bytes, not 0G
-  Storage Merkle roots.
-- Artifact retrieval is via Irys ids/gateway URLs. When a publish manifest is
-  unavailable, resolve by Irys tags:
+- Artifact fields are raw SHA-256 bytes32 values for file bytes plus 32-byte
+  Irys transaction ids, not 0G Storage Merkle roots.
+- Artifact retrieval starts from the Solana `Project` account. Read the
+  on-chain Irys id fields, convert the 32 bytes back to the base64url Irys id,
+  download that exact object, then verify its SHA-256 hash. When only older
+  hash-only metadata is available, fall back to Irys tags:
   - `App-Name = OpenResearch AutoResearch`
   - `Artifact-Role = protocol | repoSnapshot | benchmark | baselineMetrics`
   - `SHA-256 = <hex without 0x>`
@@ -21,16 +23,31 @@ program, and project artifacts are stored on Irys.
 
 ## Implemented Now
 
-`scripts/download_irys_artifacts.mjs` downloads and verifies the four project
-bootstrap artifacts from Irys. It accepts raw on-chain hashes:
+`scripts/bootstrap_from_solana.mjs` fetches the Solana `Project` account,
+downloads the four project bootstrap artifacts by their on-chain Irys ids,
+verifies the raw SHA-256 hashes, and can unpack the repo snapshot:
+
+```bash
+node scripts/bootstrap_from_solana.mjs \
+  --project-id <project_id> \
+  --output-dir /tmp/arah-project \
+  --unpack-repo
+```
+
+`scripts/download_irys_artifacts.mjs` is the lower-level downloader. It accepts
+raw on-chain hashes plus Irys ids:
 
 ```bash
 node scripts/download_irys_artifacts.mjs \
   --output-dir /tmp/arah-project/artifacts \
   --protocol-hash 0x... \
+  --protocol-irys-id <id> \
   --repo-snapshot-hash 0x... \
+  --repo-snapshot-irys-id <id> \
   --benchmark-hash 0x... \
+  --benchmark-irys-id <id> \
   --baseline-metrics-hash 0x... \
+  --baseline-metrics-irys-id <id> \
   --network devnet
 ```
 
@@ -83,7 +100,9 @@ Direct script:
 node scripts/submit_proposal_solana.mjs \
   --project-id <project_id> \
   --code-file .autoresearch/mine/submissions/<trial_id>/repo-snapshot.tar \
+  --code-irys-id <uploaded_code_id> \
   --benchmark-log-file .autoresearch/mine/runs/<trial_id>/stdout.log \
+  --benchmark-log-irys-id <uploaded_log_id> \
   --claimed-metric <metric> \
   --stake 1 \
   --reward-recipient <SOLANA_REWARD_PUBKEY> \
@@ -93,11 +112,8 @@ node scripts/submit_proposal_solana.mjs \
 
 ## Remaining Follow-up
 
-1. Add `scripts/bootstrap_from_solana.mjs`:
-   - derive project PDA from project id,
-   - fetch and decode the `Project` account,
-   - call `download_irys_artifacts.mjs`,
-   - unpack the repo snapshot,
-   - initialize `.autoresearch/mine`,
-   - write `network_state.json` with `source: solana`.
-2. Add `scripts/sync_solana_frontier.mjs`.
+1. Add a first-class Solana `network_state.json` schema branch and
+   `scripts/sync_solana_frontier.mjs`.
+2. Add a wallet upload path for proposal code/log artifacts so miners do not
+   need to upload to Irys out-of-band before passing `--code-irys-id` and
+   `--benchmark-log-irys-id`.

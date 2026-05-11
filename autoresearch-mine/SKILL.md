@@ -37,21 +37,19 @@ Run **unattended** mining against a finalized `protocol.json` and a **git checko
 ### Solana OpenResearch (default for new projects)
 
 Projects created by the current `autoresearch-create` default path live on
-Solana and use Irys for artifact retrieval. Download project artifacts from
-Irys before mining:
+Solana and use Irys for artifact retrieval. Fetch the Solana `Project` account
+first, then download the exact artifacts by the on-chain Irys ids before
+mining:
 
 ```bash
-node scripts/download_irys_artifacts.mjs \
-  --output-dir /path/to/mining-work/artifacts \
-  --protocol-hash 0x... \
-  --repo-snapshot-hash 0x... \
-  --benchmark-hash 0x... \
-  --baseline-metrics-hash 0x... \
-  --network devnet
+node scripts/bootstrap_from_solana.mjs \
+  --project-id <project_id> \
+  --output-dir /path/to/mining-work/project \
+  --unpack-repo
 ```
 
-After download, verify the artifact hashes, unpack `repo-snapshot.tar`, and
-initialize `.autoresearch/mine` with `init_mine_workspace.sh`.
+The lower-level `download_irys_artifacts.mjs` still exists for explicit
+hash/id inputs or manifests.
 
 Solana proposal submission is supported through
 `scripts/submit_proposal_solana.mjs` and
@@ -141,7 +139,8 @@ Optional **AXL sidechat** writes miner-to-miner field notes to **`sidechat.jsonl
 | `scripts/bootstrap_repo.sh` | Clone or reuse repo from protocol `meta.repo`. |
 | `scripts/bootstrap_from_registry.py` | Resolve by **`--project-id`** or **`--token-address`**, read `ProjectRegistry`, optionally download 0G artifacts, unpack the repo snapshot, initialize mining workspace, and write registry frontier state. |
 | `scripts/download_0g_artifacts.mjs` | Download protocol/repo/benchmark/baseline artifacts from 0G Storage root hashes and verify Merkle roots with the 0G SDK. |
-| `scripts/download_irys_artifacts.mjs` | Download protocol/repo/benchmark/baseline artifacts from Irys and verify raw SHA-256 hashes from Solana project metadata. |
+| `scripts/bootstrap_from_solana.mjs` | Fetch Solana `Project`, download protocol/repo/benchmark/baseline artifacts by on-chain Irys ids, verify hashes, and optionally unpack/init mining workspace. |
+| `scripts/download_irys_artifacts.mjs` | Download project/proposal/metrics artifacts from Irys by id or tags and verify raw SHA-256 hashes. |
 | `scripts/env_utils.py` | Load `.env` from the current working directory and provide the default stake. |
 | `scripts/wallet.py` | Mining wallet keystore: `init` / `address` / `status` / `sign` / `send` / `delete`. The only place a private key is decrypted. |
 | `scripts/check_wallet.py` | Preflight a wallet keystore: RPC, native gas balance, ProjectToken balance, allowance, and missing-stake buy quote. |
@@ -195,9 +194,11 @@ If `ready` is false, stop and report the missing gas/token/stake condition befor
 **From Solana project / Irys artifacts** (default for projects created by the current create skill):
 
 Use `references/onchain-mining-solana.md`. Ask for `storage_irys.json` or the
-four artifact hashes, download with `download_irys_artifacts.mjs`, unpack the
-repo snapshot, then initialize with `init_mine_workspace.sh`. Keep
-`network_state.json` manual until Solana frontier sync is implemented.
+Solana project id. Prefer `bootstrap_from_solana.mjs` so the flow reads
+on-chain artifact ids first, downloads from Irys by those ids, verifies the
+hashes, unpacks the repo snapshot, then initializes with
+`init_mine_workspace.sh`. Keep `network_state.json` manual until Solana
+frontier sync is implemented.
 
 **From legacy 0G project token address or project id** (when the project was published with 0G Storage artifacts):
 
