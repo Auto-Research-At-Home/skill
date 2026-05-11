@@ -306,6 +306,15 @@ export type OpenResearch = {
               32
             ]
           }
+        },
+        {
+          "name": "metricsIrysId",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
         }
       ]
     },
@@ -1521,6 +1530,15 @@ export type OpenResearch = {
               32
             ]
           }
+        },
+        {
+          "name": "metricsIrysId",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
         }
       ]
     },
@@ -2004,7 +2022,25 @@ export type OpenResearch = {
           }
         },
         {
+          "name": "codeIrysId",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
           "name": "benchmarkLogHash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "benchmarkLogIrysId",
           "type": {
             "array": [
               "u8",
@@ -2522,7 +2558,25 @@ export type OpenResearch = {
             }
           },
           {
+            "name": "codeIrysId",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
             "name": "metricsHash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "metricsIrysId",
             "type": {
               "array": [
                 "u8",
@@ -2596,7 +2650,25 @@ export type OpenResearch = {
             }
           },
           {
+            "name": "protocolIrysId",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
             "name": "repoSnapshotHash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "repoSnapshotIrysId",
             "type": {
               "array": [
                 "u8",
@@ -2614,11 +2686,29 @@ export type OpenResearch = {
             }
           },
           {
+            "name": "benchmarkIrysId",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
             "name": "baselineAggregateScore",
             "type": "i64"
           },
           {
             "name": "baselineMetricsHash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "baselineMetricsIrysId",
             "type": {
               "array": [
                 "u8",
@@ -2768,6 +2858,15 @@ export type OpenResearch = {
             }
           },
           {
+            "name": "protocolIrysId",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
             "name": "repoSnapshotHash",
             "type": {
               "array": [
@@ -2777,7 +2876,25 @@ export type OpenResearch = {
             }
           },
           {
+            "name": "repoSnapshotIrysId",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
             "name": "benchmarkHash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "benchmarkIrysId",
             "type": {
               "array": [
                 "u8",
@@ -2799,7 +2916,25 @@ export type OpenResearch = {
             }
           },
           {
+            "name": "baselineMetricsIrysId",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
             "name": "currentBestCodeHash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "currentBestCodeIrysId",
             "type": {
               "array": [
                 "u8",
@@ -2813,6 +2948,15 @@ export type OpenResearch = {
           },
           {
             "name": "currentBestMetricsHash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "currentBestMetricsIrysId",
             "type": {
               "array": [
                 "u8",
@@ -2896,6 +3040,15 @@ export type OpenResearch = {
                 32
               ]
             }
+          },
+          {
+            "name": "protocolIrysId",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
           }
         ]
       }
@@ -2931,6 +3084,15 @@ export type OpenResearch = {
             }
           },
           {
+            "name": "codeIrysId",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
             "name": "benchmarkLogHash",
             "type": {
               "array": [
@@ -2940,7 +3102,25 @@ export type OpenResearch = {
             }
           },
           {
+            "name": "benchmarkLogIrysId",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
             "name": "metricsHash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "metricsIrysId",
             "type": {
               "array": [
                 "u8",
@@ -3016,6 +3196,15 @@ export type OpenResearch = {
                 32
               ]
             }
+          },
+          {
+            "name": "metricsIrysId",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
           }
         ]
       }
@@ -3051,6 +3240,15 @@ export type OpenResearch = {
           },
           {
             "name": "metricsHash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "metricsIrysId",
             "type": {
               "array": [
                 "u8",
@@ -3107,6 +3305,15 @@ export type OpenResearch = {
           },
           {
             "name": "codeHash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "codeIrysId",
             "type": {
               "array": [
                 "u8",

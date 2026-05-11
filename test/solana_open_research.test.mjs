@@ -6,6 +6,7 @@ import test from "node:test";
 import { Keypair, PublicKey } from "@solana/web3.js";
 import { buildPublishArtifactPaths } from "../autoresearch-create/scripts/publish_project_0g_lib.mjs";
 import {
+  applyIrysArtifactIds,
   applyIrysArtifactHashes,
   buildIrysBrowserUploadPlan,
   mergeIrysUploadReceipts,
@@ -16,6 +17,7 @@ import { startLocalSolanaWalletPublish } from "../autoresearch-create/scripts/lo
 import {
   OPEN_RESEARCH_PROGRAM_ID,
   approveProposalAccounts,
+  bytes32ToIrysId,
   claimReviewAccounts,
   claimRewardAccounts,
   createAnchorWallet,
@@ -26,6 +28,7 @@ import {
   hex32ToBytes,
   getOpenResearchProgram,
   i64Bn,
+  irysIdToBytes32,
   publicKeyFrom,
   rejectProposalAccounts,
   releaseReviewAccounts,
@@ -72,6 +75,11 @@ test("converts bytes32 hashes into Anchor byte arrays", () => {
   assert.deepEqual(hex32ToBytes(`${"ff".repeat(32)}`), Array(32).fill(255));
   assert.throws(() => hex32ToBytes("0x1234"), /bytes32/);
   assert.throws(() => hex32ToBytes(`0x${"gg".repeat(32)}`), /bytes32/);
+
+  const irysId = bytes32ToIrysId(Array(32).fill(7));
+  assert.deepEqual(irysIdToBytes32(irysId), Array(32).fill(7));
+  assert.deepEqual(irysIdToBytes32(`0x${"08".repeat(32)}`), Array(32).fill(8));
+  assert.throws(() => irysIdToBytes32("not-an-id"), /Irys/);
 });
 
 test("validates u64 and i64 boundaries before PDA or Anchor conversion", () => {
@@ -134,10 +142,14 @@ test("derives associated token account for project SPL tokens", () => {
 test("builds createProject args and account maps for Anchor", () => {
   const inputs = {
     protocolHash: `0x${"01".repeat(32)}`,
+    protocolIrysId: bytes32ToIrysId(Array(32).fill(11)),
     repoSnapshotHash: `0x${"02".repeat(32)}`,
+    repoSnapshotIrysId: bytes32ToIrysId(Array(32).fill(12)),
     benchmarkHash: `0x${"03".repeat(32)}`,
+    benchmarkIrysId: bytes32ToIrysId(Array(32).fill(13)),
     baselineAggregateScore: "-7",
     baselineMetricsHash: `0x${"04".repeat(32)}`,
+    baselineMetricsIrysId: bytes32ToIrysId(Array(32).fill(14)),
     tokenName: "Research Token",
     tokenSymbol: "RCH",
     basePrice: "100",
@@ -147,6 +159,7 @@ test("builds createProject args and account maps for Anchor", () => {
 
   const args = createProjectInstructionArgs(inputs);
   assert.deepEqual(args.protocolHash, Array(32).fill(1));
+  assert.deepEqual(args.protocolIrysId, Array(32).fill(11));
   assert.equal(args.baselineAggregateScore.toString(), "-7");
   assert.equal(args.basePrice.toString(), "100");
 
@@ -159,13 +172,16 @@ test("builds submit proposal accounts without ERC20 allowance concepts", () => {
   const args = submitInstructionArgs({
     projectId: 42n,
     codeHash: `0x${"05".repeat(32)}`,
+    codeIrysId: bytes32ToIrysId(Array(32).fill(15)),
     benchmarkLogHash: `0x${"06".repeat(32)}`,
+    benchmarkLogIrysId: bytes32ToIrysId(Array(32).fill(16)),
     claimedAggregateScore: "11",
     stake: "3",
     rewardRecipient: REWARD,
   });
   assert.equal(args.projectId.toString(), "42");
   assert.deepEqual(args.codeHash, Array(32).fill(5));
+  assert.deepEqual(args.codeIrysId, Array(32).fill(15));
   assert.equal(args.claimedAggregateScore.toString(), "11");
   assert.equal(args.stake.toString(), "3");
   assert.equal(args.rewardRecipient.toBase58(), REWARD.toBase58());
@@ -272,7 +288,9 @@ test("full IDL builds Anchor instructions for miner and verifier flows", async (
   const submitArgs = submitInstructionArgs({
     projectId: 42n,
     codeHash: `0x${"05".repeat(32)}`,
+    codeIrysId: bytes32ToIrysId(Array(32).fill(15)),
     benchmarkLogHash: `0x${"06".repeat(32)}`,
+    benchmarkLogIrysId: bytes32ToIrysId(Array(32).fill(16)),
     claimedAggregateScore: "11",
     stake: "3",
     rewardRecipient: REWARD,
@@ -281,7 +299,9 @@ test("full IDL builds Anchor instructions for miner and verifier flows", async (
     .submit(
       submitArgs.projectId,
       submitArgs.codeHash,
+      submitArgs.codeIrysId,
       submitArgs.benchmarkLogHash,
+      submitArgs.benchmarkLogIrysId,
       submitArgs.claimedAggregateScore,
       submitArgs.stake,
       submitArgs.rewardRecipient,
@@ -302,6 +322,7 @@ test("full IDL builds Anchor instructions for miner and verifier flows", async (
       u64Bn(7n, "proposalId"),
       i64Bn("12", "verifiedAggregateScore"),
       hex32ToBytes(`0x${"07".repeat(32)}`, "metricsHash"),
+      irysIdToBytes32(bytes32ToIrysId(Array(32).fill(17)), "metricsIrysId"),
     )
     .accounts(
       approveProposalAccounts({
@@ -332,6 +353,7 @@ test("full IDL builds Anchor instructions for miner and verifier flows", async (
     .reject(
       u64Bn(7n, "proposalId"),
       hex32ToBytes(`0x${"08".repeat(32)}`, "metricsHash"),
+      irysIdToBytes32(bytes32ToIrysId(Array(32).fill(18)), "metricsIrysId"),
     )
     .accounts(
       rejectProposalAccounts({
@@ -369,10 +391,14 @@ test("summarizes Solana publish plan as JSON-safe strings", () => {
     config: resolveSolanaConfig({}, {}),
     inputs: {
       protocolHash: `0x${"01".repeat(32)}`,
+      protocolIrysId: bytes32ToIrysId(Array(32).fill(11)),
       repoSnapshotHash: `0x${"02".repeat(32)}`,
+      repoSnapshotIrysId: bytes32ToIrysId(Array(32).fill(12)),
       benchmarkHash: `0x${"03".repeat(32)}`,
+      benchmarkIrysId: bytes32ToIrysId(Array(32).fill(13)),
       baselineAggregateScore: "7",
       baselineMetricsHash: `0x${"04".repeat(32)}`,
+      baselineMetricsIrysId: bytes32ToIrysId(Array(32).fill(14)),
       tokenName: "Research Token",
       tokenSymbol: "RCH",
       basePrice: "100",
@@ -438,6 +464,12 @@ test("prepares Irys artifact hashes and upload metadata for Solana publishes", (
 
   assert.equal(uploaded.protocol.irys.uploaded, true);
   assert.equal(uploaded.protocol.irys.gatewayUri, "https://devnet.irys.xyz/id-protocol");
+  assert.deepEqual(applyIrysArtifactIds({}, uploaded), {
+    protocolIrysId: "id-protocol",
+    repoSnapshotIrysId: "id-repo",
+    benchmarkIrysId: "id-benchmark",
+    baselineMetricsIrysId: "id-baseline",
+  });
 });
 
 test("Solana wallet page renders a local connect step before remote SDK imports", async () => {

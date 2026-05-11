@@ -31,6 +31,7 @@ export const SOLANA_PUBLIC_RPC_URLS = Object.freeze({
 
 const BYTES32_RE = /^(?:0x)?[0-9a-fA-F]{64}$/;
 const U64_MAX = (1n << 64n) - 1n;
+export const ZERO_IRYS_ID = `0x${"00".repeat(32)}`;
 
 export function resolveSolanaConfig(options = {}, env = process.env) {
   const cluster =
@@ -106,6 +107,11 @@ export function hex32ToBytes(hex, label = "bytes32") {
   return Array.from(Buffer.from(normalized, "hex"));
 }
 
+export function bytes32ToHex(value, label = "bytes32") {
+  const bytes = bytes32FromArray(value, label);
+  return `0x${Buffer.from(bytes).toString("hex")}`;
+}
+
 export function bytes32FromArray(value, label = "bytes32") {
   if (!Array.isArray(value) && !(value instanceof Uint8Array) && !Buffer.isBuffer(value)) {
     throw new Error(`${label} must be a byte array`);
@@ -114,6 +120,37 @@ export function bytes32FromArray(value, label = "bytes32") {
     throw new Error(`${label} must contain exactly 32 bytes`);
   }
   return Array.from(value);
+}
+
+export function irysIdToBytes32(value, label = "Irys id") {
+  if (Array.isArray(value) || value instanceof Uint8Array || Buffer.isBuffer(value)) {
+    return bytes32FromArray(value, label);
+  }
+
+  const text = String(value || "").trim();
+  if (!text) {
+    throw new Error(`${label} is required`);
+  }
+  if (BYTES32_RE.test(text)) {
+    return hex32ToBytes(text, label);
+  }
+
+  const normalized = text.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+  const decoded = Buffer.from(padded, "base64");
+  if (decoded.length !== 32) {
+    throw new Error(`${label} must be a 32-byte Irys/Arweave transaction id`);
+  }
+  return Array.from(decoded);
+}
+
+export function bytes32ToIrysId(value, label = "Irys id") {
+  const bytes = bytes32FromArray(value, label);
+  return Buffer.from(bytes)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
 }
 
 export function createOpenResearchPdas(programId = OPEN_RESEARCH_PROGRAM_ID) {
@@ -228,8 +265,20 @@ export function getOpenResearchProgram({
 export function createProjectInstructionArgs(inputs) {
   return {
     protocolHash: hex32ToBytes(inputs.protocolHash, "protocolHash"),
+    protocolIrysId: irysIdToBytes32(
+      inputs.protocolIrysId || ZERO_IRYS_ID,
+      "protocolIrysId",
+    ),
     repoSnapshotHash: hex32ToBytes(inputs.repoSnapshotHash, "repoSnapshotHash"),
+    repoSnapshotIrysId: irysIdToBytes32(
+      inputs.repoSnapshotIrysId || ZERO_IRYS_ID,
+      "repoSnapshotIrysId",
+    ),
     benchmarkHash: hex32ToBytes(inputs.benchmarkHash, "benchmarkHash"),
+    benchmarkIrysId: irysIdToBytes32(
+      inputs.benchmarkIrysId || ZERO_IRYS_ID,
+      "benchmarkIrysId",
+    ),
     baselineAggregateScore: i64Bn(
       inputs.baselineAggregateScore,
       "baselineAggregateScore",
@@ -237,6 +286,10 @@ export function createProjectInstructionArgs(inputs) {
     baselineMetricsHash: hex32ToBytes(
       inputs.baselineMetricsHash,
       "baselineMetricsHash",
+    ),
+    baselineMetricsIrysId: irysIdToBytes32(
+      inputs.baselineMetricsIrysId || ZERO_IRYS_ID,
+      "baselineMetricsIrysId",
     ),
     tokenName: String(inputs.tokenName),
     tokenSymbol: String(inputs.tokenSymbol),
@@ -274,9 +327,14 @@ export function submitInstructionArgs(inputs) {
   return {
     projectId: u64Bn(inputs.projectId, "projectId"),
     codeHash: hex32ToBytes(inputs.codeHash, "codeHash"),
+    codeIrysId: irysIdToBytes32(inputs.codeIrysId || ZERO_IRYS_ID, "codeIrysId"),
     benchmarkLogHash: hex32ToBytes(
       inputs.benchmarkLogHash,
       "benchmarkLogHash",
+    ),
+    benchmarkLogIrysId: irysIdToBytes32(
+      inputs.benchmarkLogIrysId || ZERO_IRYS_ID,
+      "benchmarkLogIrysId",
     ),
     claimedAggregateScore: i64Bn(
       inputs.claimedAggregateScore,

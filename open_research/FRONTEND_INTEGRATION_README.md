@@ -228,6 +228,14 @@ export function hex32ToBytes(hex: string): number[] {
   if (normalized.length !== 64) throw new Error("expected bytes32 hex");
   return Array.from(Buffer.from(normalized, "hex"));
 }
+
+export function irysIdToBytes32(id: string): number[] {
+  const normalized = id.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+  const bytes = Buffer.from(padded, "base64");
+  if (bytes.length !== 32) throw new Error("expected 32-byte Irys id");
+  return Array.from(bytes);
+}
 ```
 
 Amount helper:
@@ -314,10 +322,14 @@ const mint = pdas.mint(projectIdNum);
 await program.methods
   .createProject({
     protocolHash: hex32ToBytes(protocolHash),
+    protocolIrysId: irysIdToBytes32(protocolIrysId),
     repoSnapshotHash: hex32ToBytes(repoSnapshotHash),
+    repoSnapshotIrysId: irysIdToBytes32(repoSnapshotIrysId),
     benchmarkHash: hex32ToBytes(benchmarkHash),
+    benchmarkIrysId: irysIdToBytes32(benchmarkIrysId),
     baselineAggregateScore: new BN(baselineScore.toString()),
     baselineMetricsHash: hex32ToBytes(baselineMetricsHash),
+    baselineMetricsIrysId: irysIdToBytes32(baselineMetricsIrysId),
     tokenName: "OpenResearch Project",
     tokenSymbol: "ORP",
     basePrice: u64(100_000),      // lamports per first token
@@ -391,7 +403,9 @@ await program.methods
   .submit(
     u64(projectId),
     hex32ToBytes(codeHash),
+    irysIdToBytes32(codeIrysId),
     hex32ToBytes(benchmarkLogHash),
+    irysIdToBytes32(benchmarkLogIrysId),
     new BN(claimedScore.toString()),
     u64(stake),
     rewardRecipientPublicKey
@@ -429,7 +443,12 @@ await program.methods
 
 ```ts
 await program.methods
-  .approve(u64(proposalId), new BN(verifiedScore.toString()), hex32ToBytes(metricsHash))
+  .approve(
+    u64(proposalId),
+    new BN(verifiedScore.toString()),
+    hex32ToBytes(metricsHash),
+    irysIdToBytes32(metricsIrysId)
+  )
   .accounts({
     verifier: wallet.publicKey,
     verifierEntry: pdas.verifier(wallet.publicKey),
@@ -451,6 +470,7 @@ Use the same PDA patterns:
 
 ```text
 reject:
+  args: proposalId, metricsHash, metricsIrysId
   verifier, verifierEntry, proposal, project, mint, mintAuthority,
   proposalEscrow, projectPool, claimable(verifier), tokenProgram, systemProgram
 

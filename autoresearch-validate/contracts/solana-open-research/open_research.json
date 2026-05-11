@@ -300,6 +300,15 @@
               32
             ]
           }
+        },
+        {
+          "name": "metrics_irys_id",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
         }
       ]
     },
@@ -1515,6 +1524,15 @@
               32
             ]
           }
+        },
+        {
+          "name": "metrics_irys_id",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
         }
       ]
     },
@@ -1998,7 +2016,25 @@
           }
         },
         {
+          "name": "code_irys_id",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
           "name": "benchmark_log_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "benchmark_log_irys_id",
           "type": {
             "array": [
               "u8",
@@ -2516,7 +2552,25 @@
             }
           },
           {
+            "name": "code_irys_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
             "name": "metrics_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "metrics_irys_id",
             "type": {
               "array": [
                 "u8",
@@ -2590,7 +2644,25 @@
             }
           },
           {
+            "name": "protocol_irys_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
             "name": "repo_snapshot_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "repo_snapshot_irys_id",
             "type": {
               "array": [
                 "u8",
@@ -2608,11 +2680,29 @@
             }
           },
           {
+            "name": "benchmark_irys_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
             "name": "baseline_aggregate_score",
             "type": "i64"
           },
           {
             "name": "baseline_metrics_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "baseline_metrics_irys_id",
             "type": {
               "array": [
                 "u8",
@@ -2762,6 +2852,15 @@
             }
           },
           {
+            "name": "protocol_irys_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
             "name": "repo_snapshot_hash",
             "type": {
               "array": [
@@ -2771,7 +2870,25 @@
             }
           },
           {
+            "name": "repo_snapshot_irys_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
             "name": "benchmark_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "benchmark_irys_id",
             "type": {
               "array": [
                 "u8",
@@ -2793,7 +2910,25 @@
             }
           },
           {
+            "name": "baseline_metrics_irys_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
             "name": "current_best_code_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "current_best_code_irys_id",
             "type": {
               "array": [
                 "u8",
@@ -2807,6 +2942,15 @@
           },
           {
             "name": "current_best_metrics_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "current_best_metrics_irys_id",
             "type": {
               "array": [
                 "u8",
@@ -2890,6 +3034,15 @@
                 32
               ]
             }
+          },
+          {
+            "name": "protocol_irys_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
           }
         ]
       }
@@ -2925,6 +3078,15 @@
             }
           },
           {
+            "name": "code_irys_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
             "name": "benchmark_log_hash",
             "type": {
               "array": [
@@ -2934,7 +3096,25 @@
             }
           },
           {
+            "name": "benchmark_log_irys_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
             "name": "metrics_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "metrics_irys_id",
             "type": {
               "array": [
                 "u8",
@@ -3010,6 +3190,15 @@
                 32
               ]
             }
+          },
+          {
+            "name": "metrics_irys_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
           }
         ]
       }
@@ -3045,6 +3234,15 @@
           },
           {
             "name": "metrics_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "metrics_irys_id",
             "type": {
               "array": [
                 "u8",
@@ -3101,6 +3299,15 @@
           },
           {
             "name": "code_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "code_irys_id",
             "type": {
               "array": [
                 "u8",

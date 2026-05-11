@@ -12,6 +12,7 @@ import {
   readJson,
 } from "./publish_project_0g_lib.mjs";
 import {
+  applyIrysArtifactIds,
   applyIrysArtifactHashes,
   buildIrysBrowserUploadPlan,
   mergeIrysUploadReceipts,
@@ -415,7 +416,7 @@ async function main() {
     );
   }
 
-  const inputs = buildCreateProjectInputs(inputOptions);
+  let inputs = buildCreateProjectInputs(inputOptions);
   const keypair = options.keypair
     ? Keypair.fromSecretKey(readSolanaKeypair(path.resolve(options.keypair)))
     : null;
@@ -467,7 +468,7 @@ async function main() {
     }
   }
 
-  const summary = summarizeSolanaCreateProject({
+  let summary = summarizeSolanaCreateProject({
     inputs,
     creator,
     projectId,
@@ -501,6 +502,16 @@ async function main() {
         uploadResult: irysResult,
         network: irysNetwork,
       });
+      inputOptions = applyIrysArtifactIds(inputOptions, storageArtifacts);
+      inputs = buildCreateProjectInputs(inputOptions);
+      summary = summarizeSolanaCreateProject({
+        inputs,
+        creator,
+        projectId,
+        config: solanaConfig,
+      });
+      console.log("\nSolana OpenResearch publish plan with Irys ids\n");
+      console.log(JSON.stringify(summary, bigintReplacer, 2));
       writeIrysStorageManifest({
         outputDir,
         network: irysNetwork,
@@ -508,6 +519,7 @@ async function main() {
         uploaded: true,
       });
       walletSession.setStorageArtifacts(storageArtifacts);
+      walletSession.setSummary(summary);
     }
     walletSession.setStepStatus("register", "active");
     const instruction = await program.methods

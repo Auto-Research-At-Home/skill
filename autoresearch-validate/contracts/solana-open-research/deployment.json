@@ -24,6 +24,6 @@
     "artifactLayer": "Irys",
     "devnetGateway": "https://devnet.irys.xyz",
     "mainnetGateway": "https://gateway.irys.xyz",
-    "note": "Solana publishes store raw SHA-256 artifact hashes on-chain and use Irys ids/gateway URLs as retrieval metadata."
+    "note": "Solana publishes store raw SHA-256 artifact hashes and 32-byte Irys transaction ids on-chain. Gateway URLs remain off-chain convenience metadata."
   }
 }

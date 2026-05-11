@@ -6,14 +6,20 @@ path, but the chain and artifact assumptions change.
 ## Causation From Solana Create
 
 `autoresearch-create` now writes project artifacts to Irys and stores raw
-SHA-256 artifact hashes in the Solana project account. Therefore a verifier
+SHA-256 artifact hashes plus 32-byte Irys transaction ids in the Solana project
+account. Miner proposals store the same hash/id pair for proposal artifacts.
+Therefore a verifier
 must:
 
 1. Read project and proposal accounts from the OpenResearch Solana program.
-2. Resolve project bootstrap artifacts from Irys by hash/tag or manifest.
-3. Resolve proposal code and benchmark-log artifacts by their on-chain hashes.
+2. Resolve project bootstrap artifacts from the on-chain Irys ids, then verify
+   the on-chain hashes.
+3. Resolve proposal code and benchmark-log artifacts from their on-chain Irys
+   ids, then verify the on-chain hashes.
 4. Recompute SHA-256 over downloaded bytes before running the harness.
-5. Approve/reject/release/expire via Solana instructions, not 0G
+5. Upload verifier metrics/evidence to Irys and pass `metrics_irys_id` with
+   approve/reject.
+6. Approve/reject/release/expire via Solana instructions, not 0G
    `ProposalLedger` calls.
 
 ## What Can Be Reused
@@ -43,8 +49,17 @@ The verifier can keep these existing local checks:
 
 The skill bundles the full OpenResearch Anchor IDL at
 `contracts/solana-open-research/open_research.json`. Use
-`scripts/settle_proposal_solana.mjs` after artifact resolution and benchmark
-rerun:
+`scripts/resolve_proposal_artifacts_solana.mjs` first to fetch the proposal
+artifact ids from chain and download the exact Irys objects:
+
+```bash
+node scripts/resolve_proposal_artifacts_solana.mjs \
+  --proposal-id <proposal_id> \
+  --output-dir /tmp/arah-review/p<proposal_id> \
+  --extract-code
+```
+
+Then use `scripts/settle_proposal_solana.mjs` after benchmark rerun:
 
 ```bash
 node scripts/settle_proposal_solana.mjs \
@@ -58,6 +73,7 @@ node scripts/settle_proposal_solana.mjs \
   --proposal-id <proposal_id> \
   --verified-metric <metric> \
   --metrics-log-file .autoresearch/verify/runs/<review_id>/stdout.log \
+  --metrics-irys-id <uploaded_metrics_id> \
   --keypair ~/.config/solana/id.json \
   --yes
 ```
@@ -69,9 +85,8 @@ approve dry-runs pass `--miner` plus `--reward-recipient`.
 
 ## Remaining Follow-up
 
-1. Add a Solana artifact resolver for proposal code/log artifacts. If proposal
-   artifacts use Irys, resolve by `Artifact-Role` and SHA-256 tags; otherwise
-   keep `ARAH_ARTIFACT_INDEX` mandatory.
+1. Add a wallet upload path for verifier metrics/evidence so validators do not
+   need to upload to Irys out-of-band before passing `--metrics-irys-id`.
 2. Add `watch_solana_proposals.mjs`.
 3. Add a Solana branch to `run_validate_loop.py`.
 4. Extend review records with `chain`, `cluster`, `programId`, `projectPda`,

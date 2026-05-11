@@ -213,7 +213,7 @@ Read `references/onchain-solana.md` before preparing the transaction. The active
 Prepare `createProject(...)` arguments from the approved protocol and baseline artifacts:
 
 - `protocolHash`, `repoSnapshotHash`, `benchmarkHash`, and `baselineMetricsHash` must be 32-byte hashes.
-- Prefer Irys storage (default for live Solana publishes, or `--upload-artifacts-to-irys` in dry-run). Those fields are raw SHA-256 hashes of the artifact bytes, while `storage_irys.json` records Irys ids and gateway URLs for retrieval.
+- Prefer Irys storage (default for live Solana publishes, or `--upload-artifacts-to-irys` in dry-run). The Solana instruction stores both raw SHA-256 hashes and 32-byte Irys transaction ids; `storage_irys.json` records the readable ids and gateway URLs for retrieval.
 - `baselineAggregateScore` must be the agreed signed integer representation of the primary metric. Ask the user to confirm scaling for decimal metrics.
 - Ask for `tokenName`, `tokenSymbol`, `basePrice`, `slope`, and `minerPoolCap` if not already specified.
 
