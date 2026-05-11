@@ -372,6 +372,39 @@ export function createProjectAccounts({
   };
 }
 
+export function buyProjectTokenAccounts({
+  buyer,
+  projectId,
+  programId = OPEN_RESEARCH_PROGRAM_ID,
+}) {
+  const pdas = createOpenResearchPdas(programId);
+  const mint = pdas.mint(projectId);
+  const buyerPk = publicKeyFrom(buyer, "buyer");
+  return {
+    buyer: buyerPk,
+    project: pdas.project(projectId),
+    mint,
+    mintAuthority: pdas.mintAuthority(projectId),
+    solVault: pdas.solVault(projectId),
+    buyerTokenAccount: userProjectTokenAccount(mint, buyerPk),
+    tokenProgram: TOKEN_PROGRAM_ID,
+    associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+    systemProgram: SystemProgram.programId,
+  };
+}
+
+export function costBetweenLamports(basePrice, slope, fromSupply, toSupply) {
+  const base = BigInt(basePrice);
+  const step = BigInt(slope);
+  const from = BigInt(fromSupply);
+  const to = BigInt(toSupply);
+  if (to < from) {
+    throw new Error("toSupply must be greater than or equal to fromSupply");
+  }
+  const amount = to - from;
+  return base * amount + (step * amount * (2n * from + amount)) / 2n;
+}
+
 export function submitInstructionArgs(inputs) {
   return {
     projectId: u64Bn(inputs.projectId, "projectId"),

@@ -23,7 +23,7 @@
     "project_id": { "type": "integer", "minimum": 0 },
     "result": {
       "type": "string",
-      "enum": ["skipped", "approved", "rejected", "operational_failure"]
+      "enum": ["skipped", "approved", "rejected", "released", "operational_failure"]
     },
     "reason_code": { "type": "string" },
     "code_hash": { "type": "string" },

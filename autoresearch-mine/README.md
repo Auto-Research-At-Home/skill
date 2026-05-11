@@ -1,8 +1,20 @@
 # autoresearch-mine
 
-Mining starts from either a finalized local `protocol.json` plus repo checkout, or an on-chain 0G project id / ProjectToken address.
+Mining starts from either a finalized local `protocol.json` plus repo checkout, a Solana OpenResearch project id / Irys manifest, or a legacy on-chain 0G project id / ProjectToken address.
 
-For on-chain mining, create an isolated mining-wallet keystore (passphrase-encrypted, stored under `~/.autoresearch/wallets/<id>.json`). The skill never reads `ARAH_PRIVATE_KEY` and the keystore is decrypted only inside `wallet.py`, so the trial harness — which runs untrusted protocol code inside a podman/docker/bwrap sandbox — cannot reach the key.
+For Solana projects, finish CLI and wallet setup before mining so a winning trial can be proposed without another prompt. If `solana --version` is missing, install it locally with the official Solana installer, create or reuse a dedicated miner keypair, ask the user to fund that public key from the faucet, and ask only for the reward-recipient Solana address:
+
+```bash
+solana --version || curl --proto '=https' --tlsv1.2 -sSfL https://solana-install.solana.workers.dev | bash
+solana config set --url devnet
+test -f ~/.config/solana/arah-mine-<project_id>.json || solana-keygen new --no-bip39-passphrase --outfile ~/.config/solana/arah-mine-<project_id>.json
+MINER_ADDR="$(solana address -k ~/.config/solana/arah-mine-<project_id>.json)"
+solana balance "$MINER_ADDR"
+```
+
+Solana proposal submission buys missing project-token stake first with the OpenResearch `buy()` instruction using native SOL, then stakes those tokens in `submit`.
+
+For legacy 0G on-chain mining, create an isolated mining-wallet keystore (passphrase-encrypted, stored under `~/.autoresearch/wallets/<id>.json`). The skill never reads `ARAH_PRIVATE_KEY` and the keystore is decrypted only inside `wallet.py`, so the trial harness — which runs untrusted protocol code inside a podman/docker/bwrap sandbox — cannot reach the key.
 
 ```bash
 python3 scripts/wallet.py init --id project-42

@@ -28,7 +28,7 @@ def validate_row(obj: object) -> None:
             raise ValueError(f"missing field: {k}")
     if d["schemaVersion"] != "1":
         raise ValueError('schemaVersion must be "1"')
-    if d["result"] not in ("skipped", "approved", "rejected", "operational_failure"):
+    if d["result"] not in ("skipped", "approved", "rejected", "released", "operational_failure"):
         raise ValueError("result invalid")
     for sk in ("review_id", "utc_timestamp", "reason_code", "stdout_log_path", "error"):
         if not isinstance(d[sk], str):

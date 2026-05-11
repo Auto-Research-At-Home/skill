@@ -45,7 +45,33 @@ The verifier can keep these existing local checks:
 - Replace 0G artifact index defaults with Irys resolution where proposal
   artifacts are published to Irys.
 
-## Settlement
+## Validator Loop
+
+For normal operation, start from the project token mint:
+
+```bash
+node scripts/run_validate_loop_solana.mjs \
+  --token-address <PROJECT_TOKEN_MINT> \
+  --keypair ~/.config/solana/id.json \
+  --yes
+```
+
+The script resolves and prints the project first. It checks `solana --version`,
+the keypair address/balance, and the validator PDA. If the wallet is not a
+registered verifier, it stops without sending transactions.
+
+The loop is claim-first: it sends `claim-review` for a pending staked proposal,
+and only if that transaction succeeds does it download artifacts, set up the
+sandboxed verification run, and settle. Approve/reject always uploads the
+verifier metrics log or reject evidence to Irys using the same Solana keypair
+before calling settlement; do not skip the Irys step.
+
+Score comparison uses aggregate-score semantics because the contract only
+accepts increasing scores. `maximize` metrics are scaled directly; `minimize`
+metrics are negated after scaling. With the default scale of `1_000_000`, a
+minimized benchmark value of `1.981456` becomes aggregate score `-1981456`.
+
+## Manual Settlement
 
 The skill bundles the full OpenResearch Anchor IDL at
 `contracts/solana-open-research/open_research.json`. Use
@@ -85,9 +111,9 @@ approve dry-runs pass `--miner` plus `--reward-recipient`.
 
 ## Remaining Follow-up
 
-1. Add a wallet upload path for verifier metrics/evidence so validators do not
-   need to upload to Irys out-of-band before passing `--metrics-irys-id`.
-2. Add `watch_solana_proposals.mjs`.
-3. Add a Solana branch to `run_validate_loop.py`.
-4. Extend review records with `chain`, `cluster`, `programId`, `projectPda`,
+1. Add a dedicated event-based `watch_solana_proposals.mjs` instead of polling
+   `nextProposalId`.
+2. Add a Solana branch to `run_validate_loop.py` or make it dispatch to
+   `run_validate_loop_solana.mjs`.
+3. Extend review records with `chain`, `cluster`, `programId`, `projectPda`,
    and `proposalPda`.

@@ -49,13 +49,22 @@ Options:
   --code-irys-id           Irys/Arweave transaction id for the code archive.
   --benchmark-log-hash     0x-prefixed SHA-256 bytes32, instead of --benchmark-log-file.
   --benchmark-log-irys-id  Irys/Arweave transaction id for the benchmark log.
+  --buy-lamports           Override lamports sent to buy() when stake tokens are missing.
+  --buy-slippage-bps       Slippage added to quoted missing-stake buy. Defaults to 100.
+  --skip-buy               Do not buy missing project tokens before submit.
   --allow-missing-irys-ids Use zero Irys ids. Intended only for legacy dry-runs.
 `);
 }
 
 function parseArgs(argv) {
   const options = {};
-  const boolKeys = new Set(["help", "dryRun", "yes", "allowMissingIrysIds"]);
+  const boolKeys = new Set([
+    "help",
+    "dryRun",
+    "yes",
+    "allowMissingIrysIds",
+    "skipBuy",
+  ]);
   for (let i = 0; i < argv.length; i += 1) {
     const raw = argv[i];
     if (!raw.startsWith("--")) {
@@ -136,6 +145,25 @@ function decimalMetricToScaledInt(text, scale) {
   return (negative ? -value : value).toString();
 }
 
+function parseNonNegativeInt(text, label) {
+  if (!/^[0-9]+$/.test(String(text))) {
+    throw new Error(`${label} must be a non-negative integer`);
+  }
+  return Number(text);
+}
+
+async function getTokenBalanceOrZero(connection, tokenAccount) {
+  try {
+    const balance = await connection.getTokenAccountBalance(tokenAccount);
+    return BigInt(balance.value.amount);
+  } catch (err) {
+    if (/could not find account|AccountNotFound|Invalid param/i.test(String(err?.message || err))) {
+      return 0n;
+    }
+    throw err;
+  }
+}
+
 async function loadSolanaLib() {
   const scriptsDir = path.resolve(
     process.env.AUTORESEARCH_CREATE_SCRIPTS || DEFAULT_CREATE_SCRIPTS,
@@ -186,6 +214,8 @@ async function main() {
       options.metricScale ?? process.env.ARAH_METRIC_SCALE ?? "1000000",
     );
   const stake = options.stake ?? process.env.ARAH_STAKE ?? "1";
+  const stakeTokens = solana.u64BigInt(stake, "stake");
+  const buySlippageBps = parseNonNegativeInt(options.buySlippageBps ?? "100", "buySlippageBps");
   const config = solana.resolveSolanaConfig(options);
 
   let keypair = null;
@@ -247,8 +277,67 @@ async function main() {
   });
 
   if (options.dryRun) {
+    if (!options.skipBuy) {
+      plan.preSubmitBuy = {
+        enabled: true,
+        note: "live submit checks miner project-token balance and calls buy() for missing stake before submit",
+      };
+    }
     console.log(JSON.stringify(plan, null, 2));
     return 0;
+  }
+
+  let buySignature = null;
+  if (!options.skipBuy) {
+    const pdas = solana.createOpenResearchPdas(config.programId);
+    const connection = program.provider.connection;
+    const project = await program.account.project.fetch(pdas.project(options.projectId));
+    const minerTokenAccount = solana.userProjectTokenAccount(project.mint, miner);
+    const currentBalance = await getTokenBalanceOrZero(connection, minerTokenAccount);
+    if (currentBalance < stakeTokens) {
+      const missingStake = stakeTokens - currentBalance;
+      const supply = await connection.getTokenSupply(project.mint);
+      const totalSupply = BigInt(supply.value.amount);
+      const quoted = solana.costBetweenLamports(
+        project.basePrice.toString(),
+        project.slope.toString(),
+        totalSupply,
+        totalSupply + missingStake,
+      );
+      const slippage = (quoted * BigInt(buySlippageBps)) / 10_000n;
+      const buyLamports = options.buyLamports
+        ? solana.u64BigInt(options.buyLamports, "buyLamports")
+        : quoted + slippage;
+      if (buyLamports <= 0n) {
+        throw new Error("missing project-token stake but buy lamports resolved to zero");
+      }
+      const nativeBalance = BigInt(await connection.getBalance(miner));
+      if (nativeBalance <= buyLamports) {
+        throw new Error(
+          `insufficient native SOL for buy(): balance=${nativeBalance} lamports, buy=${buyLamports} lamports`,
+        );
+      }
+      buySignature = await program.methods
+        .buy(
+          solana.u64Bn(options.projectId, "projectId"),
+          solana.u64Bn(buyLamports.toString(), "buyLamports"),
+        )
+        .accounts(
+          solana.buyProjectTokenAccounts({
+            buyer: miner,
+            projectId: options.projectId,
+            programId: config.programId,
+          }),
+        )
+        .rpc();
+
+      const balanceAfterBuy = await getTokenBalanceOrZero(connection, minerTokenAccount);
+      if (balanceAfterBuy < stakeTokens) {
+        throw new Error(
+          `project-token balance ${balanceAfterBuy} is still below stake ${stakeTokens} after buy()`,
+        );
+      }
+    }
   }
 
   const signature = await program.methods
@@ -264,7 +353,7 @@ async function main() {
     )
     .accounts(accounts)
     .rpc();
-  console.log(JSON.stringify({ ...plan, signature }, null, 2));
+  console.log(JSON.stringify({ ...plan, buySignature, signature }, null, 2));
   return 0;
 }
 
