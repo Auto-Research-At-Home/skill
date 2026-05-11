@@ -15,7 +15,8 @@ Run **unattended** mining against a finalized `protocol.json` and a **git checko
 - `jq`, `git`, `bash`, `python3` on PATH.
 - A sandbox runtime: **`podman`** (preferred), **`docker`**, or **`bwrap`** (Linux). The harness refuses to execute protocol-supplied commands without one. Override with `ARAH_SANDBOX=none ARAH_SANDBOX_ALLOW_UNSAFE=1` only on disposable VMs.
 - Target repo checkout (or run `bootstrap_repo.sh` to clone from `meta.repo.cloneUrl`; the script enforces an https-only allowlist of git hosts).
-- For on-chain mining, an isolated mining wallet kept in a passphrase-encrypted **keystore** under `~/.autoresearch/wallets/<id>.json`:
+- For Solana projects, a local Solana CLI + funded miner keypair prepared **before** mining starts. If `solana --version` fails, install it yourself from the official Solana installer (`curl --proto '=https' --tlsv1.2 -sSfL https://solana-install.solana.workers.dev | bash`), then verify `solana --version`. Generate a dedicated miner keypair if needed, ask the user to fund that public key with the faucet, and ask only for the reward-recipient wallet address.
+- For legacy 0G on-chain mining, an isolated mining wallet kept in a passphrase-encrypted **keystore** under `~/.autoresearch/wallets/<id>.json`:
   ```bash
   python3 scripts/wallet.py init --id project-42       # generates a fresh secp256k1 key
   python3 scripts/wallet.py address --id project-42    # print the address; user funds it from their main wallet
@@ -57,6 +58,10 @@ Solana proposal submission is supported through
 live submission, or pass `--dry-run --solana-miner <pubkey>
 --solana-proposal-id <id>` to emit the account/instruction plan only. Do not
 use legacy 0G wallet preflight or 0G registry scripts for Solana projects.
+For live Solana proposal submission, the script checks the miner's project SPL
+token balance before `submit`; if the balance is below `--stake`, it calls the
+program `buy(project_id, lamports_in)` instruction first using native SOL, then
+stakes the resulting project tokens in `submit`.
 
 ### Env fallbacks (outer loop only; protocol `miningLoop` wins when set)
 
@@ -173,7 +178,30 @@ Run scripts from **`autoresearch-mine/scripts/`** (or invoke via absolute paths 
 
 ### 1. Wallet preflight for on-chain mining
 
-When the user provides a project token address or 0G project id, start by initializing (or reusing) an isolated mining wallet, then check it. The same keystore signs **`buy()`**, **`approve()`**, and **`submit()`** later — never `ARAH_PRIVATE_KEY`.
+**Solana projects:** complete this before bootstrap, artifact download, or any
+trial work. Do not ask the user to install the CLI or create the miner wallet;
+do those steps locally. Ask the user only for the reward-recipient Solana
+address and, when the dedicated miner keypair has been generated, ask them to
+fund that miner public key using the Solana faucet.
+
+```bash
+solana --version || curl --proto '=https' --tlsv1.2 -sSfL https://solana-install.solana.workers.dev | bash
+solana config set --url devnet
+test -f ~/.config/solana/arah-mine-<project_id>.json || solana-keygen new --no-bip39-passphrase --outfile ~/.config/solana/arah-mine-<project_id>.json
+MINER_ADDR="$(solana address -k ~/.config/solana/arah-mine-<project_id>.json)"
+solana balance "$MINER_ADDR"
+```
+
+If the balance is zero, stop before mining and ask the user to fund the printed
+miner address from the faucet. Record the user's reward-recipient address before
+the loop starts so a winning trial can be submitted without another prompt.
+
+The proposal submitter will buy missing project-token stake automatically with
+native SOL immediately before `submit`. Use `--solana-buy-lamports` only when
+overriding the quoted buy amount, and `--no-auto-buy` only for diagnostic runs
+where submission is expected to fail without existing stake.
+
+**Legacy 0G projects:** when the user provides a project token address or 0G project id, start by initializing (or reusing) an isolated mining wallet, then check it. The same keystore signs **`buy()`**, **`approve()`**, and **`submit()`** later — never `ARAH_PRIVATE_KEY`.
 
 ```bash
 # One-time setup:
@@ -274,8 +302,11 @@ If the trial beats the freshly synced **legacy 0G on-chain** best, do not wait f
 
 For Solana projects, call **`submit_trial_proposal.py --chain solana`** with
 `--project-id`, `--solana-keypair`, `--reward-recipient`, and `--yes` for live
-submission. Use `--dry-run --solana-miner <pubkey> --solana-proposal-id <id>`
-to verify hashes and account maps without RPC/signing.
+submission. The submitter buys any missing project-token stake first with the
+program `buy` instruction, then stakes in `submit`; pass
+`--solana-buy-lamports` only to override the automatic quote. Use
+`--dry-run --solana-miner <pubkey> --solana-proposal-id <id>` to verify hashes
+and account maps without RPC/signing.
 
 ### 7. Automatic on-chain submit after beating registry best
 

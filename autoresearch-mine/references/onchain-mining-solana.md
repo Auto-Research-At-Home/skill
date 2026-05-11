@@ -20,6 +20,38 @@ program, and project artifacts are stored on Irys.
   - `SHA-256 = <hex without 0x>`
 - Stake/token flows use SPL token accounts and program instructions. There is
   no ERC20 `approve`.
+- Proposal creation requires project SPL tokens. Before live `submit`, the
+  miner must hold native SOL for gas and for any missing project-token stake.
+  The submit script calls the OpenResearch `buy(project_id, lamports_in)`
+  instruction first when stake tokens are missing, then calls `submit`.
+
+## Preflight Before Mining
+
+Finish Solana setup before artifact bootstrap or trial work so a winning trial
+can be proposed automatically.
+
+1. Check `solana --version`. If it is missing, install the CLI locally with the
+   official installer:
+
+   ```bash
+   curl --proto '=https' --tlsv1.2 -sSfL https://solana-install.solana.workers.dev | bash
+   solana --version
+   ```
+
+2. Configure the cluster and create or reuse a dedicated miner keypair:
+
+   ```bash
+   solana config set --url devnet
+   test -f ~/.config/solana/arah-mine-<project_id>.json || solana-keygen new --no-bip39-passphrase --outfile ~/.config/solana/arah-mine-<project_id>.json
+   MINER_ADDR="$(solana address -k ~/.config/solana/arah-mine-<project_id>.json)"
+   solana balance "$MINER_ADDR"
+   ```
+
+3. If the miner balance is zero or too low, ask the user to fund
+   `MINER_ADDR` using the Solana faucet. Do not ask the user to install the CLI
+   or create the keypair.
+4. Ask the user only for the reward-recipient Solana wallet address. Record it
+   before the loop starts; do not defer this prompt until after a winning trial.
 
 ## Implemented Now
 
@@ -109,6 +141,13 @@ node scripts/submit_proposal_solana.mjs \
   --keypair ~/.config/solana/id.json \
   --yes
 ```
+
+Live submission checks the miner token account before `submit`. If the project
+token balance is below `--stake`, it fetches the project bonding-curve
+parameters and mint supply, quotes the missing stake buy, calls `buy()` with
+native SOL, rechecks the token balance, and only then calls `submit`. Override
+the quote with `--buy-lamports` only when necessary; use `--skip-buy` only for
+diagnostic runs.
 
 ## Remaining Follow-up
 

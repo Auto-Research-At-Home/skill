@@ -18,8 +18,10 @@ import {
   OPEN_RESEARCH_PROGRAM_ID,
   approveProposalAccounts,
   bytes32ToIrysId,
+  buyProjectTokenAccounts,
   claimReviewAccounts,
   claimRewardAccounts,
+  costBetweenLamports,
   createAnchorWallet,
   createOpenResearchPdas,
   createProjectAccounts,
@@ -166,6 +168,18 @@ test("builds createProject args and account maps for Anchor", () => {
   const accounts = createProjectAccounts({ creator: OWNER, projectId: 42n });
   assert.equal(accounts.creator.toBase58(), OWNER.toBase58());
   assert.equal(accounts.mint.toBase58(), "DxnPHf7soRktjmYnwSj4AMvvz3z891yoFo9T2HzQAtDD");
+});
+
+test("builds buy accounts and quotes linear bonding curve cost", () => {
+  const accounts = buyProjectTokenAccounts({ buyer: OWNER, projectId: 42n });
+  assert.equal(accounts.buyer.toBase58(), OWNER.toBase58());
+  assert.equal(accounts.mint.toBase58(), "DxnPHf7soRktjmYnwSj4AMvvz3z891yoFo9T2HzQAtDD");
+  assert.equal(
+    accounts.buyerTokenAccount.toBase58(),
+    "DzWkKreQbb2kA6mEp2Zqyzm21eaMwm7hBpsw7bhQnA58",
+  );
+  assert.equal(costBetweenLamports(100n, 2n, 10n, 13n), 369n);
+  assert.throws(() => costBetweenLamports(100n, 2n, 13n, 10n), /toSupply/);
 });
 
 test("builds submit proposal accounts without ERC20 allowance concepts", () => {

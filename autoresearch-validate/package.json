@@ -1,14 +1,14 @@
 {
-  "name": "autoresearch-mine-skill-runtime",
+  "name": "autoresearch-validate-skill-runtime",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "dependencies": {
-    "@0gfoundation/0g-storage-ts-sdk": "^1.2.8",
     "@coral-xyz/anchor": "^0.32.1",
+    "@irys/upload": "^0.0.15",
+    "@irys/upload-solana": "^0.1.8",
     "@solana/spl-token": "^0.4.14",
     "@solana/web3.js": "^1.98.4",
-    "bn.js": "^5.2.3",
-    "ethers": "6.13.1"
+    "bn.js": "^5.2.3"
   }
 }

@@ -73,6 +73,8 @@ def main() -> int:
     parser.add_argument("--solana-proposal-id", help="Proposal id override, mainly for dry-runs.")
     parser.add_argument("--solana-code-irys-id", help="Irys id for the submitted code archive.")
     parser.add_argument("--solana-benchmark-log-irys-id", help="Irys id for the submitted benchmark log.")
+    parser.add_argument("--solana-buy-lamports", help="Override lamports sent to Solana buy() when stake tokens are missing.")
+    parser.add_argument("--solana-buy-slippage-bps", help="Slippage added to the quoted Solana missing-stake buy.")
     parser.add_argument(
         "--solana-allow-missing-irys-ids",
         action="store_true",
@@ -137,6 +139,12 @@ def main() -> int:
                 cmd.extend(["--code-irys-id", args.solana_code_irys_id])
             if args.solana_benchmark_log_irys_id:
                 cmd.extend(["--benchmark-log-irys-id", args.solana_benchmark_log_irys_id])
+            if args.solana_buy_lamports:
+                cmd.extend(["--buy-lamports", args.solana_buy_lamports])
+            if args.solana_buy_slippage_bps:
+                cmd.extend(["--buy-slippage-bps", args.solana_buy_slippage_bps])
+            if not args.auto_buy:
+                cmd.append("--skip-buy")
             if args.solana_allow_missing_irys_ids:
                 cmd.append("--allow-missing-irys-ids")
             if args.yes:
