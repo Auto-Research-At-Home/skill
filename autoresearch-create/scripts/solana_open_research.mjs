@@ -122,6 +122,48 @@ export function bytes32FromArray(value, label = "bytes32") {
   return Array.from(value);
 }
 
+const BS58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+const BS58_RE = /^[1-9A-HJ-NP-Za-km-z]+$/;
+
+function bs58Decode(text) {
+  let zeroes = 0;
+  while (zeroes < text.length && text[zeroes] === "1") zeroes++;
+  const size = Math.floor((text.length - zeroes) * 733) / 1000 + 1 | 0;
+  const b256 = new Uint8Array(size);
+  let length = 0;
+  for (let i = zeroes; i < text.length; i++) {
+    const carryStart = BS58_ALPHABET.indexOf(text[i]);
+    if (carryStart < 0) return null;
+    let carry = carryStart;
+    let j = 0;
+    for (let k = size - 1; (carry !== 0 || j < length) && k >= 0; k--, j++) {
+      carry += 58 * b256[k];
+      b256[k] = carry & 0xff;
+      carry >>= 8;
+    }
+    length = j;
+  }
+  let it = size - length;
+  while (it < size && b256[it] === 0) it++;
+  const out = new Uint8Array(zeroes + (size - it));
+  let k = zeroes;
+  for (; it < size; it++) out[k++] = b256[it];
+  return out;
+}
+
+function tryBase64UrlDecode32(text) {
+  const normalized = text.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+  const decoded = Buffer.from(padded, "base64");
+  return decoded.length === 32 ? Array.from(decoded) : null;
+}
+
+function tryBase58Decode32(text) {
+  if (!BS58_RE.test(text)) return null;
+  const decoded = bs58Decode(text);
+  return decoded && decoded.length === 32 ? Array.from(decoded) : null;
+}
+
 export function irysIdToBytes32(value, label = "Irys id") {
   if (Array.isArray(value) || value instanceof Uint8Array || Buffer.isBuffer(value)) {
     return bytes32FromArray(value, label);
@@ -135,13 +177,20 @@ export function irysIdToBytes32(value, label = "Irys id") {
     return hex32ToBytes(text, label);
   }
 
-  const normalized = text.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
-  const decoded = Buffer.from(padded, "base64");
-  if (decoded.length !== 32) {
+  // base64url of 32 bytes is 43 chars (no padding); base58 of 32 bytes is
+  // almost always 44 chars. Prefer base64url for 43-char inputs (canonical
+  // Arweave/gateway format and what bytes32ToIrysId emits) and base58 for
+  // 44-char inputs (what @irys/web-upload-solana returns for Solana receipts).
+  // Strings containing `-` or `_` are unambiguously base64url.
+  const hasBase64UrlOnlyChars = /[-_]/.test(text);
+  const preferBase64 = hasBase64UrlOnlyChars || text.length === 43;
+  const first = preferBase64 ? tryBase64UrlDecode32 : tryBase58Decode32;
+  const second = preferBase64 ? tryBase58Decode32 : tryBase64UrlDecode32;
+  const decoded = first(text) || second(text);
+  if (!decoded) {
     throw new Error(`${label} must be a 32-byte Irys/Arweave transaction id`);
   }
-  return Array.from(decoded);
+  return decoded;
 }
 
 export function bytes32ToIrysId(value, label = "Irys id") {
