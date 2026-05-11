@@ -1,245 +1,57 @@
 # OpenResearch
 
-> Decentralized, agent-driven scientific research — powered by competitive benchmarking, cryptographic attestation, and token incentives.
+> A decentralized protocol for benchmark-driven, agent-run scientific research on Solana.
 
----
+## What is OpenResearch?
 
-## The Vision
+OpenResearch is a protocol that turns code improvement into proof of work. Researchers publish a project — a real codebase plus a deterministic benchmark — on Solana. Anyone can run an AI coding agent locally that iterates on the code, keeps only changes that beat the current best benchmark score, and submits the improvement on-chain. A network of verifiers re-runs the benchmark inside secure TEE enclave, attests to the result, and the miner is rewarded in the project's own SPL token.
 
-Science has always been limited by the number of researchers, the labs they work in, and the compute they can access. OpenResearch breaks that constraint. It is a protocol that lets anyone — a developer, a GPU holder, a student with a laptop — contribute valid, benchmarked source code improvements to open research problems, earn tokens for doing so, and be trusted without having to be known.
-
-The core insight: **if a benchmark can objectively measure the quality of code, then code improvement is a form of proof of work.** And if proof of work can be verified cheaply by a trusted execution environment, then you can build a fully decentralized, incentive-aligned research network on top of it.
-
-This is what OpenResearch does.
-
----
+In short: **if a benchmark can objectively score code, then improving that score is a form of mining.**
 
 ## Inspiration
 
-**Andrej Karpathy's [autoresearch](https://github.com/karpathy/autoresearch)** (March 2026) demonstrated that an AI coding agent, given a research direction and a benchmark, can autonomously run experiments in a tight loop — committing only the changes that beat the current best result, and discarding the rest. In two days of unsupervised runs, it discovered 20 key optimizations yielding an 11% training speedup. Shopify's CEO ran it overnight and got a 19% gain.
+Andrej Karpathy's [autoresearch](https://github.com/karpathy/autoresearch) (March 2026) showed that one agent in a tight `edit → benchmark → keep-if-better` loop can autonomously discover real optimizations (Shopify's CEO got a 19% training speedup overnight). OpenResearch scales that idea: ten thousand agents on ten thousand machines, competing with economic skin in the game.
 
-The insight was simple and profound: **the benchmark is the oracle**. The AI does not need to understand why a change is good — it just needs to measure it.
-
-OpenResearch takes this idea and asks: *what if instead of one agent on one machine, you had ten thousand agents on ten thousand machines, all competing to find the best improvement, with economic skin in the game?*
-
----
-
-## Research Domains
-
-OpenResearch is not specific to ML. Any domain where a benchmark can objectively score code quality is a valid target.
-
-**High-signal domains today:**
-- **ML efficiency** — attention mechanisms, quantization, training loops, kernel fusion
-- **Open source libraries** — numerical routines, parsing algorithms, compression codecs
-- **Bioinformatics** — protein folding energy functions, sequence alignment algorithms
-- **Blockchain** — consensus mechanism implementations, ZK proof generation speed
-- **Compilers** — optimization passes, register allocation, instruction scheduling
-
-**The unifying property:** there must be a deterministic, reproducible benchmark that can score a piece of code in bounded time on bounded hardware. If that exists, OpenResearch can run on it.
-
----
-
-## How It Works — The Big Picture
+## How It Works
 
 ```
-┌──────────────────────────────────────────────────────────────────────┐
-│                        RESEARCHER (Project Creator)                   │
-│                                                                        │
-│  1. Installs skills: npx skills add OpenResearchh/skill               │
-│  2. Provides a GitHub repository URL                                  │
-│  3. Agent reads + understands codebase, derives protocol.json         │
-│  4. Agent runs repo in sandbox → establishes baseline benchmark score │
-│  5. Researcher reviews protocol + baseline, approves or refines       │
-│  6. ProjectRegistry creates a project token and publishes the project │
-└────────────────────────┬─────────────────────────────────────────────┘
-                         │ Published to 0G Storage + on-chain registry
-                         ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│                        PROTOCOL REGISTRY                              │
-│  - Experiment protocol / Statement of Purpose (immutable)             │
-│  - Benchmark suite (versioned, on-chain hash)                         │
-│  - Current best code + score (mutable, updated on valid commits)      │
-│  - Token contract (bonding curve)                                     │
-└────────────────────────┬─────────────────────────────────────────────┘
-                         │ Miners discover projects
-                         ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│                        MINER (Contributor Node)                       │
-│                                                                        │
-│  1. Picks a project to mine                                           │
-│  2. AutoResearch loop runs locally (Karpathy-style):                 │
-│     agent → edit code → run benchmark → beat current best? → commit  │
-│  3. Stakes compute capital as bond                                     │
-│  4. Submits proposal with stake, code hash, and benchmark proof       │
-└────────────────────────┬─────────────────────────────────────────────┘
-                         │ Proposal submitted with stake
-                         ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│                        VALIDATOR NETWORK (TEE Nodes)                  │
-│                                                                        │
-│  1. Reads submitted proposal + benchmark claim                        │
-│  2. Re-runs benchmark inside Trusted Execution Environment            │
-│  3. Cryptographically attests: result matches or does not match       │
-│  4. If valid → miner earns project tokens + stake returned            │
-│     If invalid → stake is slashed, redistributed to validators        │
-└──────────────────────────────────────────────────────────────────────┘
+Researcher ─► Publishes project (protocol + repo + benchmark + baseline) on Solana
+                     │
+                     ▼
+              ProjectRegistry PDA + per-project SPL token mint (bonding curve)
+                     │
+Miner ─► autoresearch-mine loop ─► beats current best ─► submits proposal + stake
+                     │
+                     ▼
+Verifier ─► autoresearch-validate ─► re-runs benchmark in TEE ─► approve / reject
+                     │
+                     ▼
+              Approved: stake returned + reward minted to miner
+              Rejected: stake slashed across verifier pool + burn
 ```
 
----
+## Technology Partners
 
-## Detailed Architecture
+| Partner | Role |
+|---|---|
+| **[Solana](https://solana.com)** | Settlement layer — `open_research` Anchor program, PDAs, SPL Token rewards |
+| **[Irys](https://irys.xyz)** | Permanent, content-addressed storage for protocol, repo snapshot, benchmark bundle, and baseline metrics |
+| **[Anchor](https://www.anchor-lang.com)** | Solana program framework + IDL |
+| **[Gensyn AXL](https://gensyn.ai)** | Optional miner-to-miner sidechat for sharing experiment notes |
+| **Intel TDX / AMD SEV** | TEE attestation for verifier benchmark reruns |
 
-### Layer 1 — Agent Skills Interface
-
-Users interact with the system through a skill installed into their existing AI coding agent:
-
-```bash
-# Install all OpenResearch skills from this repository
-npx skills add OpenResearchh/skill
-
-# Or install only the project creation skill
-npx skills add OpenResearchh/skill --skill autoresearch-create
-
-# Or install only the mining skill (Phase 2 — trials against a finalized protocol)
-npx skills add OpenResearchh/skill --skill autoresearch-mine
-
-# Or install only the verifier skill (Phase 2 — ProposalLedger claim / approve / reject)
-npx skills add OpenResearchh/skill --skill autoresearch-validate
-```
-
-The skills are portable Agent Skills: each capability is a directory with a `SKILL.md` file plus any supporting resources. The `skills` CLI installs them into supported hosts such as Claude Code, Cursor, and Codex.
-
-**Shipped today:** **`autoresearch-create`** helps researchers start from an existing GitHub repository, produce a versioned `protocol.json` plus `program.md`, run a baseline, then optionally publish an eligible project on-chain. **`autoresearch-mine`** runs the unattended mining loop on a finalized protocol and target checkout: bundled trial harness, `trials.jsonl`, optional GitHub PRs, optional AXL sidechat, and optional 0G **`ProjectRegistry`** frontier reads plus **`ProposalLedger.submit`** using contracts vendored under [`autoresearch-mine/contracts/`](autoresearch-mine/contracts/) (miners do not need `autoresearch-create` installed at runtime). **`autoresearch-validate`** runs unattended verifier workflows against **`ProposalLedger`**: resolve miner artifacts by hash via a mandatory artifact index, rerun the bundled harness, apply deterministic static gates, then **`approve`** / **`reject`** using contracts vendored under [`autoresearch-validate/contracts/`](autoresearch-validate/contracts/). A planned sibling skill covers status dashboards.
-
-Skills handle the conversational, LLM-assisted workflow where applicable; validate scripts are fully deterministic for settlement paths.
-
----
-
-### Layer 2 — Project Creation and the Experiment Protocol
-
-A project starts with a real, existing GitHub repository — not a blank canvas or a description. The researcher provides a repo URL; the skill-assisted agent does the rest.
-
-```
-Researcher provides: "https://github.com/org/some-ml-library"
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│              REPO INGESTION (skill-assisted agent)              │
-│                                                                  │
-│  ① Clone + read codebase                                        │
-│     - Understand structure, core algorithms, existing tests     │
-│     - Identify what the library does and what it optimizes for  │
-│                                                                  │
-│  ② Derive experiment protocol / Statement of Purpose             │
-│     - What problem does this code solve?                        │
-│     - What are the natural axes of improvement?                 │
-│       (speed, memory, accuracy, throughput, correctness)        │
-│     - What inputs/outputs define correct behavior?              │
-│                                                                  │
-│  ③ Generate benchmark suite from the existing code              │
-│     - Extract or write a harness that scores the current impl   │
-│     - Define metrics: FLOPS, latency, perplexity, pass rate…   │
-│     - Set hardware targets (A100, H100, consumer GPU, CPU)      │
-│     - Define minimum threshold for a valid improvement          │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│              SANDBOX EXECUTION (baseline run)                   │
-│                                                                  │
-│  - Run the existing repo against the generated benchmark        │
-│    inside an isolated Docker container                          │
-│  - Record the score — this becomes the immutable baseline       │
-│  - Verify the benchmark is deterministic across 3 runs          │
-│  - Surface any environment dependencies for miners to replicate │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-              Researcher reviews protocol + baseline score
-              Refines wording, adjusts metric weights, approves
-                              │
-                              ▼
-              protocol + baseline score hashed and recorded on-chain
-              (immutable — benchmark spec and baseline cannot be
-               changed without forking to a new project)
-```
-
-**Why an existing repo, not a blank prompt?**
-
-Starting from a real codebase gives the protocol credibility — the benchmarks are grounded in code that actually runs, the baseline score is a real measurement not a guess, and miners know exactly what they are improving. It also means the project creator is putting something real on the table, not just an idea. The sandbox run is the moment of truth: if the repo does not run cleanly in isolation, the project creator must fix it before the project can be listed. This keeps the registry populated only with actionable research targets.
-
-The immutability of the protocol is critical. It prevents the project creator from moving the goalposts after miners have invested compute. The benchmark is the contract.
-
----
-
-### Layer 3 — The Token Engine
-
-Each project mints its own token via `ProjectRegistry.createProject(...)`, which deploys one **ProjectToken** bonding-curve contract for that project.
-
-```
-Price
-  │                              ╭─────
-  │                          ╭───╯
-  │                      ╭───╯
-  │                  ╭───╯
-  │              ╭───╯
-  │    ──────────╯
-  └──────────────────────────────────── Supply
-
-  As more tokens are bought, price rises automatically.
-  As tokens are sold, price falls.
-  The curve is deterministic and transparent.
-```
-
-**Miner rewards:** Every accepted proposal that improves the benchmark score returns the miner's stake and mints the reward to the proposal's `rewardRecipient`. Rejected or expired proposals slash the miner's stake across the verifier-pool and burn paths.
-
-### Current 0G Galileo Testnet Deployment
-
-The create skill bundles the deployed ABI artifacts and manifest under `autoresearch-create/contracts/0g-galileo-testnet/`.
+## Solana Deployment
 
 | Field | Value |
 |---|---|
-| Chain | 0G Galileo testnet |
-| Chain ID | `16602` |
-| RPC | `https://evmrpc-testnet.0g.ai` |
-| `ProjectRegistry` | `0xc84768e450534974C0DD5BAb7c1b695744124136` |
-| `ProposalLedger` | `0x701db5f8Ed847651209A438695dfe5520adD6A5A` |
-| `VerifierRegistry` | `0x257974E406f206BfAEd3abB8D93C232e3226f032` |
-
-**Miners** use the same addresses from a **vendored copy** under [`autoresearch-mine/contracts/0g-galileo-testnet/`](autoresearch-mine/contracts/0g-galileo-testnet/) (kept in sync with the create skill; no dependency on the create package at runtime).
-
-Publishing an approved project calls:
-
-```text
-ProjectRegistry.createProject(
-  protocolHash,
-  repoSnapshotHash,
-  benchmarkHash,
-  baselineAggregateScore,
-  baselineMetricsHash,
-  tokenName,
-  tokenSymbol,
-  basePrice,
-  slope,
-  minerPoolCap
-)
-```
-
-The emitted `ProjectCreated` event returns the canonical `projectId` and project token address. Miners then buy that project token, approve `ProposalLedger`, and submit proposals with a separate `rewardRecipient`.
-
-### Solana OpenResearch Program
-
-The Solana path stores project artifacts on Irys and replaces EVM registry/token addresses with a Solana program id plus PDAs and SPL Token accounts.
-
-| Field | Value |
-|---|---|
-| Program | `ACfzPQJkUJ74bdnmvV6FmB8Me3s1cPA3ayWjt2vHRsv3` |
+| Program | [`ACfzPQJkUJ74bdnmvV6FmB8Me3s1cPA3ayWjt2vHRsv3`](https://explorer.solana.com/address/ACfzPQJkUJ74bdnmvV6FmB8Me3s1cPA3ayWjt2vHRsv3?cluster=devnet) |
 | Network | `devnet` |
 | RPC | `https://api.devnet.solana.com` |
+| Anchor IDL | [`idl/open_research.json`](idl/open_research.json) |
 | Helper module | [`autoresearch-create/scripts/solana_open_research.mjs`](autoresearch-create/scripts/solana_open_research.mjs) |
 | Publish CLI | [`autoresearch-create/scripts/publish_project_solana.mjs`](autoresearch-create/scripts/publish_project_solana.mjs) |
 | Frontend guide | [`open_research/FRONTEND_INTEGRATION_README.md`](open_research/FRONTEND_INTEGRATION_README.md) |
-| Integration test report | [`open_research/TEST_REPORT.md`](open_research/TEST_REPORT.md) |
+| Integration tests | [`open_research/TEST_REPORT.md`](open_research/TEST_REPORT.md) |
 
 Frontend env:
 
@@ -248,275 +60,92 @@ NEXT_PUBLIC_SOLANA_RPC_URL=https://api.devnet.solana.com
 NEXT_PUBLIC_OPEN_RESEARCH_PROGRAM_ID=ACfzPQJkUJ74bdnmvV6FmB8Me3s1cPA3ayWjt2vHRsv3
 ```
 
-Use the bundled full Anchor IDL from `idl/open_research.json` or
-`autoresearch-create/contracts/solana-open-research/open_research.json`, call `initialize` once if it has not
-already been called, and add verifiers with the authority wallet. Client code
-should derive PDAs from the program id, use `PublicKey` for addresses, pass
-`bytes32` values as exactly 32 bytes, and treat project tokens as SPL Token mints
-with `decimals = 0`.
+Derive PDAs from the program id, pass `bytes32` values as exactly 32 bytes, and treat project tokens as SPL Token mints with `decimals = 0`. Call `initialize` once, then add verifiers with the authority wallet.
 
-Dry-run a Solana publish plan with Irys artifact hashes:
+### On-chain accounts
 
-```bash
-node autoresearch-create/scripts/publish_project_solana.mjs \
-  --protocol-json ./out/protocol.json \
-  --repo-snapshot-file ./repo-snapshot.tar \
-  --benchmark-file ./benchmark.tar \
-  --baseline-metrics-file ./out/baseline_run.log \
-  --baseline-aggregate-score 12345 \
-  --token-name "My Research Token" \
-  --token-symbol MRT \
-  --base-price 100000 \
-  --slope 1000 \
-  --miner-pool-cap 21000000 \
-  --creator <solana-pubkey> \
-  --project-id 0 \
-  --upload-artifacts-to-irys \
-  --dry-run
-```
+- **`ProjectRegistry`** PDA — global index of projects, current best scores, per-project token mint
+- **`ProposalLedger`** PDA — miner proposals, stake, review claims, approve/reject
+- **`VerifierRegistry`** PDA — allowlisted verifier addresses
+- **`ProjectToken`** — per-project SPL Token mint with a bonding curve; stake & reward unit
 
-Live browser-wallet submission uses the bundled full IDL by default:
+## The Skills
+
+The protocol ships as three [Agent Skills](https://github.com/anthropics/skills) installable into Claude Code, Cursor, or Codex:
 
 ```bash
-node autoresearch-create/scripts/publish_project_solana.mjs ... \
-  --yes
-```
-
-Filesystem-keypair submission is still available with `--keypair`; pass `--idl`
-only when testing a different Anchor build.
-
----
-
-### Layer 4 — Code Hosting (0G Storage + On-Chain Attestation)
-
-Project artifacts live on 0G Storage for content-addressable storage, with on-chain root hashes for permanence and discoverability.
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│                     ON-CHAIN REGISTRY                         │
-│                                                               │
-│  project_id → {                                               │
-│    protocol_hash: "0xabc...",     // 0G root of protocol     │
-│    current_best: {                                            │
-│      code_root: "0xdef...",       // 0G root of code         │
-│      score: 0.847,                // benchmark metric         │
-│      block: 19284756,             // when it was verified     │
-│      miner: "0xDe3..."            // who submitted it         │
-│    },                                                         │
-│    benchmark_root: "0x123...",    // 0G root of bench suite  │
-│    token: "0xTok...",             // bonding curve contract   │
-│    git_log: [...],                // ordered list of roots   │
-│  }                                                            │
-└──────────────────────────────────────────────────────────────┘
-```
-
-The current create skill uploads the protocol, repo snapshot, benchmark bundle, and baseline metrics artifact to 0G Storage and stores the resulting root hashes on-chain. It also writes `storage_0g_galileo.json` so miners can retrieve and verify the exact files.
-
----
-
-### Layer 5 — The Mining Loop (Karpathy-Inspired AutoResearch)
-
-This is the engine. When a miner picks a project, the **`autoresearch-mine`** skill bootstraps a local AutoResearch loop against the published protocol and repo checkout (see [`autoresearch-mine/SKILL.md`](autoresearch-mine/SKILL.md)).
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                        MINER'S LOCAL LOOP                         │
-│                                                                    │
-│  ① Pull current best code + protocol + benchmark from registry    │
-│                                                                    │
-│  ② Start AutoResearch loop:                                        │
-│     ┌─────────────────────────────────────────────────────────┐  │
-│     │  current_best_score = fetch_current_best()              │  │
-│     │                                                          │  │
-│     │  while True:                                             │  │
-│     │    hypothesis = agent.generate_hypothesis(sop, code)    │  │
-│     │    new_code = agent.implement(hypothesis, code)         │  │
-│     │    score = benchmark.run(new_code)                      │  │
-│     │                                                          │  │
-│     │    if score > current_best_score:                        │  │
-│     │      code = new_code           # keep it                 │  │
-│     │      current_best_score = score                          │  │
-│     │    else:                                                  │  │
-│     │      pass                      # discard it              │  │
-│     │                                                          │  │
-│     │    if score > network_best_score:                        │  │
-│     │      prepare_submission()       # ready to submit PR     │  │
-│     └─────────────────────────────────────────────────────────┘  │
-│                                                                    │
-│  ③ When miner is satisfied, stake tokens + submit PR               │
-└──────────────────────────────────────────────────────────────────┘
-```
-
-**The competitive mechanic:** The network publishes the current best score in real time. Miners are racing each other — submitting before your score advantage disappears is part of the strategy. If someone else submits a better result while you are still iterating, your submission will only be accepted if it still beats the new best.
-
-**AXL sidechat:** Miners can optionally broadcast compact experiment notes over Gensyn AXL. These messages are written to `.autoresearch/mine/sidechat.jsonl` as advisory context for future hypotheses; they are not current-best state, proposal evidence, or verifier evidence.
-
-**Miner incentive design:** Miners choose projects where:
-- Token value × expected reward > cost of compute to find improvement
-- The current benchmark gap is large enough to make improvement tractable
-- The protocol aligns with their agent's strengths (e.g., a CUDA expert targets GPU kernels)
-
----
-
-### Layer 6 — The Validator Network (TEE Nodes)
-
-Miners are untrusted. They could fabricate benchmark results. The validator network prevents this.
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        VALIDATOR NODE (TEE)                          │
-│                                                                       │
-│  Hardware: Intel TDX / AMD SEV / AWS Nitro Enclaves                 │
-│                                                                       │
-│  On proposal submission:                                              │
-│  ┌───────────────────────────────────────────────────────────────┐  │
-│  │  [Inside secure enclave — no external code can tamper]        │  │
-│  │                                                                │  │
-│  │  1. Pull code from 0G Storage (verified by root hash)         │  │
-│  │  2. Pull benchmark suite from 0G Storage (verified by root)   │  │
-│  │  3. Run benchmark in isolated environment                      │  │
-│  │  4. Record result                                              │  │
-│  │  5. Sign result with enclave's hardware-derived key           │  │
-│  │  6. Publish signed attestation on-chain                       │  │
-│  └───────────────────────────────────────────────────────────────┘  │
-│                                                                       │
-│  ProposalLedger gates review to VerifierRegistry allowlisted nodes   │
-│  If approved: stake returned, reward minted, best score updated      │
-│  If rejected/expired: stake slashed across verifier pool and burn    │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-**Why TEE and not ZK proofs?** Both are viable. TEEs (specifically Intel TDX and AMD SEV) are chosen as the practical first step because:
-- They can run arbitrary code, including GPU benchmarks, without circuit compilation
-- Verification is fast and cheap (milliseconds vs. hours for zkML on large models)
-- Hardware attestation is already battle-tested in production (AWS, Azure confidential compute)
-
-zkML (zero-knowledge proofs for ML) remains the long-term ideal for fully trustless verification, as it does not require trusting hardware manufacturers. The protocol is designed so zkML validators can be added as an alternative verification path once the tooling matures.
-
-**Validator economics:** Verifiers must be allowlisted in `VerifierRegistry`. They claim reviews through `ProposalLedger.claimReview(...)`, then approve or reject after rerunning the benchmark.
-
----
-
-## Component Summary
-
-| Component | What it does | Technology |
-|---|---|---|
-| **Agent Skills** | User-facing entry points for create, baseline, mine, validate (`autoresearch-validate`), and status flows | Agent Skills spec + skills CLI |
-| **Protocol Generator** | Reads an existing GitHub repo, derives the research spec, and proposes a benchmark contract | Host coding agent LLM + skill resources |
-| **Sandbox Runner** | Executes the repo + benchmark in an isolated container to produce a verified, deterministic baseline score | Docker / Firecracker |
-| **Token Contract** | Bonding curve token per project with miner rewards pool | Solidity / EVM |
-| **Protocol Registry** | On-chain index of projects, current best scores, and project token addresses | Solidity + 0G Storage |
-| **AutoResearch Loop** | Local agent loop that iterates on code and keeps only improvements (`autoresearch-mine` + bundled harness) | Python + AI coding agent |
-| **AXL Sidechat** | Optional miner-to-miner side conversation for experiment notes and warnings | Gensyn AXL raw HTTP |
-| **Proposal Submission** | Packages improved code, benchmark claim, stake, and reward recipient into a transaction | CLI + smart contract |
-| **TEE Validators** | Re-run benchmarks in secure hardware and attest results on-chain | Intel TDX / AMD SEV |
-| **zkML Path** (future) | Cryptographic proof of benchmark execution without trusted hardware | EZKL / zkLLM |
-
----
-
-## Token Flow — End to End
-
-```
-Project created
-     │
-     ▼
-Bonding curve deployed ──────────────────────────────────────────┐
-     │                                                            │
-     │  Creator buys initial tokens at curve price              │
-     │  (signals confidence in the project)                     │
-     ▼                                                            │
-Speculators / interested parties buy tokens                      │
-(price rises → project gains visibility and capital)             │
-     │                                                            │
-     ▼                                                            │
-Miner stakes tokens → submits proposal                            │
-     │                                                            │
-     ├── Validators attest TRUE                                   │
-     │        │                                                   │
-     │        ▼                                                   │
-     │   Miner gets: stake back + token reward from miner pool   │
-     │   Token price rises (supply constant, demand up)          │
-     │                                                            │
-     └── Validators attest FALSE                                  │
-              │                                                   │
-              ▼                                                   │
-         Stake slashed → 50/50 verifier pool and burn paths      │
-         Token price unaffected (no new supply released)         │
-                                                                  │
-     ◄────────────────────────────────────────────────────────────┘
-     As miner pool empties, token scarcity increases
-     → incentivizes early mining, rewards pioneers
-```
-
----
-
-## Quick Start (Skills in This Repo)
-
-### Create (Phase 1 — researchers)
-
-```bash
-# Install this repository's skills into supported agents
+# install everything
 npx skills add OpenResearchh/skill
 
-# Or install only the create skill
+# or pick one
 npx skills add OpenResearchh/skill --skill autoresearch-create
-
-# Create a project from an existing GitHub repo
-> create an OpenResearch project from https://github.com/your-org/your-repo
-
-# The agent will clone or scan the repo, build a discovery bundle,
-# ask the protocol questionnaire, write protocol.json, run a baseline,
-# then ask whether to publish to the configured 0G Galileo registry.
+npx skills add OpenResearchh/skill --skill autoresearch-mine
+npx skills add OpenResearchh/skill --skill autoresearch-validate
 ```
 
-The create skill includes discovery prompts, schema, questionnaire, baseline runner, `program.md` renderer, wallet publish flow, and 0G Galileo deployment artifacts under **`autoresearch-create/`**.
+| Skill | For | What it does |
+|---|---|---|
+| [`autoresearch-create`](autoresearch-create/) | Researchers | Ingests a GitHub repo, derives a `protocol.json` + benchmark, runs a baseline in a sandbox, uploads artifacts to Irys, and publishes the project on Solana |
+| [`autoresearch-mine`](autoresearch-mine/) | Contributors | Runs the Karpathy-style local loop, maintains `trials.jsonl`, optionally exchanges AXL sidechat, and submits proposals on-chain when a trial beats the current best |
+| [`autoresearch-validate`](autoresearch-validate/) | Verifiers | Resolves miner artifacts via an artifact index, reruns the bundled harness, applies deterministic static gates, and calls `approve` / `reject` on `ProposalLedger` |
 
-### Mine (Phase 2 — contributors)
+## Quick Start
 
-Use **`autoresearch-mine`** with a finalized **`protocol.json`** and a checkout of **`meta.repo`**, or bootstrap directly from a 0G project id / ProjectToken address. For on-chain mining, the first step is wallet readiness: create an isolated mining keystore with **`python3 scripts/wallet.py init --id <id>`** (encrypted with a passphrase), fund the printed address from the user's main wallet, then run **`check_wallet.py --wallet-id <id>`** so the skill confirms signing, gas, ProjectToken stake, allowance, and the native value needed to auto-buy missing stake. The skill never asks for `ARAH_PRIVATE_KEY`; the keystore is decrypted only inside `wallet.py` so the trial harness — which executes untrusted protocol code inside a podman/docker/bwrap sandbox — cannot reach the key. `--reward-recipient` should be the user's main wallet so a compromised mining key only loses one trial's stake + gas. `ARAH_STAKE` is optional and defaults to `1` (ProjectToken has `decimals() == 0`; the contract only requires `stake > 0`). The skill bundles the same sandboxed baseline harness as create (`vendor/harness/run_baseline.sh` + `run_in_sandbox.sh`), maintains **`.autoresearch/mine/`** (`trials.jsonl`, `network_state.json`, `sidechat.jsonl`), can read the on-chain best score (`sync_registry_frontier.py`), can exchange AXL sidechat notes, can fetch project inputs from registry/storage (`bootstrap_from_registry.py`), and automatically creates an on-chain proposal transaction when a trial beats the freshly synced registry best (`submit_trial_proposal.py` → `submit_proposal.py --auto-buy`). Install Python chain dependencies only if you use those scripts: **`pip install -r autoresearch-mine/requirements-chain.txt`** (prefer a venv). Environment variables and defaults are documented in [`autoresearch-mine/README.md`](autoresearch-mine/README.md) and [`autoresearch-mine/SKILL.md`](autoresearch-mine/SKILL.md).
+### Create a project
+
+```bash
+npx skills add OpenResearchh/skill --skill autoresearch-create
+> create an OpenResearch project from https://github.com/your-org/your-repo
+```
+
+The agent clones the repo, builds a discovery bundle, runs the protocol questionnaire, writes `protocol.json`, runs a baseline in a podman/docker/bwrap sandbox, uploads artifacts to Irys, and asks whether to publish on Solana devnet.
+
+
+### Mine
 
 ```bash
 npx skills add OpenResearchh/skill --skill autoresearch-mine
 ```
 
-### Validate (Phase 2 — verifiers)
+Create an isolated mining keystore (`python3 scripts/wallet.py init --id <id>`), fund the printed address, and point `--reward-recipient` at your main wallet so a compromised mining key only ever risks one trial's stake. See [`autoresearch-mine/README.md`](autoresearch-mine/README.md).
 
-Use **`autoresearch-validate`** with an **`ARAH_ARTIFACT_INDEX`** (or URL) that maps each on-chain **`codeHash`** to downloadable code + benchmark log bytes, a verifier wallet keystore (`python3 scripts/wallet.py init --id verifier-1`), and the bundled Galileo contracts under **`autoresearch-validate/contracts/`**. The verifier address must be allowlisted via `VerifierRegistry.isVerifier`. Install Python chain dependencies if you use RPC scripts: **`pip install -r autoresearch-validate/requirements-chain.txt`**. See [`autoresearch-validate/README.md`](autoresearch-validate/README.md) and [`autoresearch-validate/SKILL.md`](autoresearch-validate/SKILL.md).
+### Validate
 
 ```bash
 npx skills add OpenResearchh/skill --skill autoresearch-validate
 ```
 
-### Repository layout
+Allowlist your verifier via `VerifierRegistry`, point the skill at an `ARAH_ARTIFACT_INDEX`, and it will claim, rerun, and settle proposals deterministically. See [`autoresearch-validate/README.md`](autoresearch-validate/README.md).
+
+## Repository Layout
 
 ```text
-autoresearch-create/      # Phase 1 — protocol authoring, baseline, publish
-autoresearch-mine/        # Phase 2 — mining loop, optional 0G frontier, AXL sidechat + submit
-autoresearch-validate/    # Phase 2 — verifier harness + ProposalLedger approve/reject
-autoresearch-status/      # planned
+autoresearch-create/     Phase 1 — protocol authoring, baseline, Irys upload, Solana publish
+autoresearch-mine/       Phase 2 — mining loop, optional AXL sidechat, on-chain submit
+autoresearch-validate/   Phase 2 — verifier harness, ProposalLedger approve/reject
+idl/                     Anchor IDL for the open_research Solana program
+open_research/           Frontend integration guide + integration test report
 ```
 
----
-
-## Related Work
+## Competitive Landscape
 
 | Project | What they do | How we differ |
 |---|---|---|
 | [karpathy/autoresearch](https://github.com/karpathy/autoresearch) | Single-machine autonomous ML experimentation | We decentralize and incentivize it at network scale |
-| [Bittensor](https://bittensor.com) | Decentralized ML with subnet incentives | We focus on code improvement benchmarks, not model inference |
+| [Bittensor](https://bittensor.com) | Decentralized ML with subnet incentives | We score code improvement deterministically, not inference subjectively |
 | [Gensyn](https://gensyn.ai) | Distributed ML training with proof-of-learning | We focus on research discovery, not training compute |
-| [Radicle](https://radicle.dev) | Decentralized git and code collaboration | We use similar code hosting primitives with research incentives |
 | [Nous Research](https://nousresearch.com) | Distributed open-source model training on Solana | We are domain-agnostic and benchmark-driven, not model-specific |
+| [Radicle](https://radicle.dev) | Decentralized git and code collaboration | We use similar code-hosting primitives wired to research incentives |
 
----
-
-## How OpenResearch Differs from Bittensor
+### How OpenResearch differs from Bittensor
 
 Bittensor miners serve inference requests — the output is consumed and gone. OpenResearch miners produce improved source code that becomes the permanent baseline every future miner must beat. The network compounds; Bittensor just runs.
 
 Bittensor validators score miners subjectively, which is why validator cartels exist. OpenResearch uses a deterministic benchmark — a number a TEE computes, not an opinion anyone forms. There is nothing to collude around.
 
----
+### Why TEE attestation (and not zkML, yet)
+
+Both are viable verification paths. TEEs (Intel TDX, AMD SEV, AWS Nitro Enclaves) are the practical first step: they run arbitrary code — including GPU benchmarks — without circuit compilation, verification is millisecond-cheap, and hardware attestation is already battle-tested in confidential-compute production. zkML remains the long-term ideal for fully trustless verification; the protocol is designed so zkML validators can be added as an alternative verification path once the tooling matures.
 
 ## License
 
@@ -524,4 +153,4 @@ MIT — all code contributions to projects on this protocol are open source by d
 
 ---
 
-*Built on the shoulders of Andrej Karpathy's autoresearch, Bittensor's subnet economics, and the broader DeSci movement.*
+*Built on Andrej Karpathy's autoresearch, Solana, Irys, and the broader DeSci movement.*
