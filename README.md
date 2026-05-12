@@ -127,6 +127,15 @@ idl/                     Anchor IDL for the open_research Solana program
 open_research/           Frontend integration guide + integration test report
 ```
 
+## Related repositories
+
+Other pieces of the OpenResearch project live in companion repositories (useful for reviews and for contributors looking for the full stack):
+
+| Repository | Role |
+|---|---|
+| **[OpenResearchh/contracts.sol](https://github.com/OpenResearchh/contracts.sol/)** | Solana program — Anchor smart contracts for the protocol |
+| **[OpenResearchh/website](https://github.com/OpenResearchh/website)** | Public website for the project |
+
 ## Competitive Landscape
 
 | Project | What they do | How we differ |
